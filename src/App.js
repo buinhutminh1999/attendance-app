@@ -1,32 +1,45 @@
 import React, { useState } from "react";
 import * as XLSX from "xlsx";
 import { format } from "date-fns";
-import "./App.css"; // Đảm bảo bạn đã import App.css
+import {
+  Button,
+  TextField,
+  Select,
+  MenuItem,
+  Container,
+  Box,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+} from "@mui/material";
+import { ToastContainer, toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 const App = () => {
   const [data, setData] = useState([]);
   const [groupedData, setGroupedData] = useState({});
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterDepartment, setFilterDepartment] = useState("");
 
-  // Hàm chuyển đổi số Excel thành định dạng ngày tháng
   const convertExcelDate = (excelDate) => {
     const date = new Date((excelDate - 25569) * 86400 * 1000);
     return date;
   };
 
-  // Hàm chuyển đổi số Excel thành giờ (hh:mm:ss)
   const convertExcelTime = (excelTime) => {
     if (!excelTime) return "Chưa ghi nhận";
     const totalSeconds = Math.round(excelTime * 86400);
     const hours = Math.floor(totalSeconds / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
     return `${hours.toString().padStart(2, "0")}:${minutes
       .toString()
-      .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+      .padStart(2, "0")}`;
   };
 
-  // Hàm phân nhóm dữ liệu theo phòng ban
   const groupByDepartment = (data) => {
     const grouped = data.reduce((acc, row) => {
       const department = row["TÊN BỘ PHẬN"] || "Chưa xác định";
@@ -39,7 +52,6 @@ const App = () => {
     setGroupedData(grouped);
   };
 
-  // Xử lý khi upload file Excel
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     const reader = new FileReader();
@@ -49,7 +61,6 @@ const App = () => {
       const sheetName = workbook.SheetNames[0];
       const sheetData = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
-      // Chuyển đổi dữ liệu
       const processedData = sheetData.map((row) => ({
         ...row,
         Ngày: convertExcelDate(row["Ngày"]),
@@ -61,274 +72,429 @@ const App = () => {
 
       setData(processedData);
       groupByDepartment(processedData);
+      toast.success("Dữ liệu đã được tải lên thành công!");
     };
 
     reader.readAsBinaryString(file);
   };
 
-  // Hàm lọc dữ liệu theo từ khóa tìm kiếm
-  const filteredData = Object.keys(groupedData).reduce((acc, department) => {
-    acc[department] = groupedData[department].filter((row) =>
-      Object.values(row)
-        .join(" ")
-        .toLowerCase()
-        .includes(searchTerm.toLowerCase())
-    );
-    return acc;
-  }, {});
+  const getFilteredData = () => {
+    const filteredData = data.filter((row) => {
+      const matchesSearch =
+        row["TÊN NHÂN VIÊN"]
+          ?.toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        row["TÊN BỘ PHẬN"]?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesDepartment =
+        !filterDepartment || row["TÊN BỘ PHẬN"] === filterDepartment;
 
-  // Hàm in bảng chấm công cho từng bộ phận
-  const printDepartmentAttendance = (department) => {
+      return matchesSearch && matchesDepartment;
+    });
+
+    return filteredData;
+  };
+
+  // Hàm in một bộ phận
+  const printDepartment = (department) => {
+    const printWindow = window.open("", "", "width=800,height=600");
+    if (!printWindow) {
+      alert(
+        "Không thể mở cửa sổ in. Vui lòng kiểm tra cài đặt trình duyệt của bạn."
+      );
+      return;
+    }
+
     const departmentData = groupedData[department];
     const startDate = departmentData[0]["Ngày"];
     const endDate = departmentData[departmentData.length - 1]["Ngày"];
+    const startFormatted = format(new Date(startDate), "dd/MM/yyyy");
+    const endFormatted = format(new Date(endDate), "dd/MM/yyyy");
 
-    const startFormatted = format(new Date(startDate), "MM/dd/yyyy");
-    const endFormatted = format(new Date(endDate), "MM/dd/yyyy");
-
-    const printWindow = window.open("", "", "width=800,height=600");
-
-    printWindow.document.write("<html><head><title>In bảng chấm công</title>");
-    printWindow.document.write(`
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          padding: 20px;
-          margin: 0;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 20px;
-        }
-        th, td {
-          border: 1px solid #000;
-          padding: 8px;
-          text-align: left;
-        }
-        th {
-          background-color: #f2f2f2;
-        }
-        td {
-          text-align: center;
-        }
-        .department-title {
-          font-size: 1.2em;
-          margin-top: 30px;
-          font-weight: bold;
-        }
-        .footer {
-          margin-top: 20px;
-          text-align: left;
-        }
-        .page-break {
-          page-break-before: always;
-        }
-      </style>
-    `);
-    printWindow.document.write("</head><body>");
-
-    printWindow.document.write(`<div class="department-title">Bảng công từ ngày ${startFormatted} đến ngày ${endFormatted} - Bộ phận: ${department}</div>`);
-    printWindow.document.write(`
-      <table>
-        <thead>
-          <tr>
-            <th>STT</th>
-            <th>Tên nhân viên</th>
-            <th>Ngày</th>
-            <th>Thứ</th>
-            <th>S1</th>
-            <th>S2</th>
-            <th>C1</th>
-            <th>C2</th>
-            <th>Lý do đi trễ</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${departmentData.map((row, idx) => {
-            return `
-              <tr>
+    // Nội dung in
+    let content =
+      `<div class="department-title">` +
+      `Bảng công từ ngày ${startFormatted} đến ngày ${endFormatted} - Bộ phận: ${department}` +
+      `</div>` +
+      `<table>
+      <thead>
+        <tr>
+          <th style="width: 5%;">STT</th>
+          <th style="width: 15%;">Tên nhân viên</th>
+          <th style="width: 10%;">Ngày</th>
+          <th style="width: 10%;">Thứ</th>
+          <th style="width: 8%;">S1</th>
+          <th style="width: 8%;">S2</th>
+          <th style="width: 8%;">C1</th>
+          <th style="width: 8%;">C2</th>
+          <th style="width: 28%;">Lý do đi trễ</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${departmentData
+          .map((row, idx) => {
+            return `<tr>
                 <td>${idx + 1}</td>
                 <td>${row["TÊN NHÂN VIÊN"] || "N/A"}</td>
-                <td>${row["Ngày"] instanceof Date && !isNaN(row["Ngày"]) ? format(row["Ngày"], "dd/MM/yyyy") : "N/A"}</td>
+                <td>${
+                  row["Ngày"] instanceof Date && !isNaN(row["Ngày"])
+                    ? format(row["Ngày"], "dd/MM/yyyy")
+                    : "N/A"
+                }</td>
                 <td>${row["Thứ"] || "N/A"}</td>
                 <td>${row["S1"] || "Chưa ghi nhận"}</td>
                 <td>${row["S2"] || "Chưa ghi nhận"}</td>
                 <td>${row["C1"] || "Chưa ghi nhận"}</td>
                 <td>${row["C2"] || "Chưa ghi nhận"}</td>
                 <td></td>
-              </tr>
-            `;
-          }).join('')}
-        </tbody>
-      </table>
-    `);
-
-    // Thêm thông tin chữ ký sau mỗi bộ phận
-    printWindow.document.write(`
-      <div class="footer">
-        <div>Xác nhận của lãnh đạo bộ phận: _____________________</div>
-        <div>Người lập: _____________________</div>
+              </tr>`;
+          })
+          .join("")}
+      </tbody>
+    </table>` +
+      `<div class="footer">
+      <div class="footer-section">
+        <span>Xác nhận của lãnh đạo bộ phận</span>
+        <div class="line"></div>
       </div>
-    `);
+      <div class="footer-section">
+        <span>Người lập</span>
+        <div class="line"></div>
+      </div>
+    </div>`;
 
-    printWindow.document.write("</body></html>");
+    // Chèn CSS vào cửa sổ in
+    printWindow.document.write(`
+    <html>
+      <head>
+        <title>In bộ phận: ${department}</title>
+        <style>
+          body {
+            font-family: 'Times New Roman', serif;
+            padding: 20px;
+            margin: 0;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+          }
+          th, td {
+            border: 1px solid #000;
+            padding: 8px;
+            text-align: center;
+          }
+          th {
+            font-size: 14px;
+          }
+          td {
+            font-size: 13px;
+          }
+          .department-title {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            margin-top: 20px;
+          }
+          .footer {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+            font-size: 13px;
+          }
+          .footer-section {
+            width: 48%;
+            text-align: center;
+          }
+          .footer-section .line {
+            margin-top: 30px;
+            border-top: 1px solid #000;
+            padding-top: 10px;
+          }
+        </style>
+      </head>
+      <body>${content}</body>
+    </html>
+  `);
+
+    // Hoàn tất in
     printWindow.document.close();
     printWindow.print();
   };
 
-  // Hàm in bảng chấm công cho tất cả bộ phận
-  const printAllDepartmentsAttendance = () => {
+  const printAllDepartments = () => {
     const printWindow = window.open("", "", "width=800,height=600");
-    printWindow.document.write("<html><head><title>In bảng chấm công</title>");
-    printWindow.document.write(`
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          padding: 20px;
-          margin: 0;
-        }
-        table {
-          width: 100%;
-          border-collapse: collapse;
-          margin-top: 20px;
-        }
-        th, td {
-          border: 1px solid #ddd;
-          padding: 8px;
-          text-align: left;
-        }
-        th {
-          background-color: #f2f2f2;
-        }
-        td {
-          text-align: center;
-        }
-        .department-title {
-          font-size: 1.2em;
-          margin-top: 30px;
-          font-weight: bold;
-        }
-        .footer {
-          margin-top: 20px;
-          text-align: left;
-        }
-        .page-break {
-          page-break-before: always;
-        }
-      </style>
-    `);
-    printWindow.document.write("</head><body>");
+    if (!printWindow) {
+      alert(
+        "Không thể mở cửa sổ in. Vui lòng kiểm tra cài đặt trình duyệt của bạn."
+      );
+      return;
+    }
 
-    // Lặp qua các bộ phận và in cho từng bộ phận
-    Object.keys(filteredData).forEach(department => {
-      if (filteredData[department].length > 0) {
-        printWindow.document.write(`<div class="department-title">Bảng công - Bộ phận: ${department}</div>`);
-        printWindow.document.write(`
-          <table>
-            <thead>
-              <tr>
-                <th>STT</th>
-                <th>Tên nhân viên</th>
-                <th>Ngày</th>
-                <th>Thứ</th>
-                <th>S1</th>
-                <th>S2</th>
-                <th>C1</th>
-                <th>C2</th>
-                <th>Lý do đi trễ</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${filteredData[department].map((row, idx) => {
-                return `
-                  <tr>
+    let content = "";
+    const departmentKeys = Object.keys(groupedData);
+
+    departmentKeys.forEach((department, index) => {
+      const departmentData = groupedData[department];
+      const startDate = departmentData[0]["Ngày"];
+      const endDate = departmentData[departmentData.length - 1]["Ngày"];
+      const startFormatted = format(new Date(startDate), "dd/MM/yyyy");
+      const endFormatted = format(new Date(endDate), "dd/MM/yyyy");
+
+      content +=
+        `<div class="department-title">` +
+        `Bảng công từ ngày ${startFormatted} đến ngày ${endFormatted} - Bộ phận: ${department}` +
+        `</div>` +
+        `<table>
+          <thead>
+            <tr>
+              <th style="width: 5%;">STT</th>
+              <th style="width: 15%;">Tên nhân viên</th>
+              <th style="width: 10%;">Ngày</th>
+              <th style="width: 10%;">Thứ</th>
+              <th style="width: 8%;">S1</th>
+              <th style="width: 8%;">S2</th>
+              <th style="width: 8%;">C1</th>
+              <th style="width: 8%;">C2</th>
+              <th style="width: 28%;">Lý do đi trễ</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${departmentData
+              .map((row, idx) => {
+                return `<tr>
                     <td>${idx + 1}</td>
                     <td>${row["TÊN NHÂN VIÊN"] || "N/A"}</td>
-                    <td>${row["Ngày"] instanceof Date && !isNaN(row["Ngày"]) ? format(row["Ngày"], "dd/MM/yyyy") : "N/A"}</td>
+                    <td>${
+                      row["Ngày"] instanceof Date && !isNaN(row["Ngày"])
+                        ? format(row["Ngày"], "dd/MM/yyyy")
+                        : "N/A"
+                    }</td>
+
                     <td>${row["Thứ"] || "N/A"}</td>
                     <td>${row["S1"] || "Chưa ghi nhận"}</td>
                     <td>${row["S2"] || "Chưa ghi nhận"}</td>
                     <td>${row["C1"] || "Chưa ghi nhận"}</td>
                     <td>${row["C2"] || "Chưa ghi nhận"}</td>
                     <td></td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        `);
-        printWindow.document.write('<div class="page-break"></div>');
-      }
+                  </tr>`;
+              })
+              .join("")}
+          </tbody>
+        </table>` +
+        `<div class="footer">
+          <div class="footer-section">
+            <span>Xác nhận của lãnh đạo bộ phận</span>
+            <div class="line"></div>
+          </div>
+          <div class="footer-section">
+            <span>Người lập</span>
+            <div class="line"></div>
+          </div>
+        </div>` +
+        (index < departmentKeys.length - 1
+          ? `<div style="page-break-before: always;"></div>`
+          : "");
     });
 
-    printWindow.document.write("</body></html>");
+    // Chèn CSS vào cửa sổ in
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>In bảng công</title>
+          <style>
+            body {
+              font-family: 'Times New Roman', serif;
+              padding: 20px;
+              margin: 0;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin-top: 20px;
+            }
+            th, td {
+              border: 1px solid #000;
+              padding: 8px;
+              text-align: center;
+            }
+            th {
+              font-size: 14px;
+            }
+            td {
+              font-size: 13px;
+            }
+            .department-title {
+              font-size: 16px;
+              font-weight: bold;
+              text-align: center;
+              margin-top: 20px;
+            }
+            .footer {
+              display: flex;
+              justify-content: space-between;
+              margin-top: 30px;
+              font-size: 13px;
+            }
+            .footer-section {
+              width: 48%;
+              text-align: center;
+            }
+            .footer-section .line {
+              margin-top: 30px;
+              border-top: 1px solid #000;
+              padding-top: 10px;
+            }
+          </style>
+        </head>
+        <body>${content}</body>
+      </html>
+    `);
+
+    // Hoàn tất in
     printWindow.document.close();
     printWindow.print();
   };
 
+  const handleEdit = (index, field, value) => {
+    const updatedData = [...data];
+    updatedData[index][field] = value;
+    setData(updatedData);
+  };
+
   return (
-    <div className="App">
-      <h1>Ứng dụng Chấm Công</h1>
-      <input type="file" onChange={handleFileUpload} />
-      <div className="search-container">
-        <input
-          type="text"
-          placeholder="Tìm kiếm..."
+    <Container>
+      <h1>Ứng dụng tính bảng công</h1>
+      <Box my={2}>
+        <Button variant="contained" component="label">
+          Tải lên file Excel
+          <input
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleFileUpload}
+            hidden
+          />
+        </Button>
+      </Box>
+
+      <Box my={2}>
+        <TextField
+          label="Tìm kiếm"
+          variant="outlined"
+          fullWidth
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
-      </div>
-      <div className="buttons-container">
-        <button onClick={printAllDepartmentsAttendance}>In tất cả bộ phận</button>
-        {Object.keys(filteredData).map((department) => (
-          <button key={department} onClick={() => printDepartmentAttendance(department)}>
-            In bảng chấm công - {department}
-          </button>
-        ))}
-      </div>
+      </Box>
 
-      {/* Table for displaying data */}
-      {data.length > 0 && (
-        <div className="table-container">
-          {Object.keys(filteredData).map((department) => (
-            <div key={department}>
-              <h3>{department}</h3>
-              <table>
-                <thead>
-                  <tr>
-                    <th>STT</th>
-                    <th>Tên nhân viên</th>
-                    <th>Ngày</th>
-                    <th>Thứ</th>
-                    <th>S1</th>
-                    <th>S2</th>
-                    <th>C1</th>
-                    <th>C2</th>
-                    <th>Lý do đi trễ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredData[department].map((row, idx) => (
-                    <tr key={idx}>
-                      <td>{idx + 1}</td>
-                      <td>{row["TÊN NHÂN VIÊN"] || "N/A"}</td>
-                      <td>{row["Ngày"] instanceof Date && !isNaN(row["Ngày"]) ? format(row["Ngày"], "dd/MM/yyyy") : "N/A"}</td>
-                      <td>{row["Thứ"] || "N/A"}</td>
-                      <td>{row["S1"] || "Chưa ghi nhận"}</td>
-                      <td>{row["S2"] || "Chưa ghi nhận"}</td>
-                      <td>{row["C1"] || "Chưa ghi nhận"}</td>
-                      <td>{row["C2"] || "Chưa ghi nhận"}</td>
-                      <td></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+      <Box my={2} display="flex" justifyContent="space-between">
+        <Button
+          variant="contained"
+          className="button-group"
+          onClick={printAllDepartments}
+        >
+          In tất cả bộ phận
+        </Button>
+
+        {Object.keys(groupedData).map((department) => (
+          <Button
+            className="button-group"
+            variant="contained"
+            onClick={() => printDepartment(department)}
+            key={department}
+            style={{ marginLeft: 10 }} // Adds space between the buttons
+          >
+            In bộ phận: {department}
+          </Button>
+        ))}
+      </Box>
+
+      <Box my={2}>
+        <Select
+          fullWidth
+          value={filterDepartment}
+          onChange={(e) => setFilterDepartment(e.target.value)}
+        >
+          <MenuItem value="">Tất cả bộ phận</MenuItem>
+          {Object.keys(groupedData).map((department) => (
+            <MenuItem key={department} value={department}>
+              {department}
+            </MenuItem>
           ))}
-        </div>
-      )}
-    </div>
+        </Select>
+      </Box>
+
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              <TableCell>STT</TableCell>
+              <TableCell>Tên nhân viên</TableCell>
+              <TableCell>Ngày</TableCell>
+              <TableCell>Thứ</TableCell>
+              <TableCell>S1</TableCell>
+              <TableCell>S2</TableCell>
+              <TableCell>C1</TableCell>
+              <TableCell>C2</TableCell>
+              <TableCell>Tên bộ phận</TableCell> {/* Thêm cột "Tên bộ phận" */}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+  {getFilteredData().map((row, idx) => (
+    <TableRow key={idx}>
+      <TableCell>{idx + 1}</TableCell>
+      <TableCell>{row["TÊN NHÂN VIÊN"] || "N/A"}</TableCell>
+      <TableCell>
+        {row["Ngày"] instanceof Date
+          ? format(row["Ngày"], "dd/MM/yyyy")
+          : "N/A"}
+      </TableCell>
+      <TableCell>{row["Thứ"] || "N/A"}</TableCell>
+      <TableCell>
+        <TextField
+          value={row["S1"] || ""}
+          onChange={(e) => handleEdit(idx, "S1", e.target.value)}
+          fullWidth
+          variant="outlined"
+          size="small"
+        />
+      </TableCell>
+      <TableCell>
+        <TextField
+          value={row["S2"] || ""}
+          onChange={(e) => handleEdit(idx, "S2", e.target.value)}
+          fullWidth
+          variant="outlined"
+          size="small"
+        />
+      </TableCell>
+      <TableCell>
+        <TextField
+          value={row["C1"] || ""}
+          onChange={(e) => handleEdit(idx, "C1", e.target.value)}
+          fullWidth
+          variant="outlined"
+          size="small"
+        />
+      </TableCell>
+      <TableCell>
+        <TextField
+          value={row["C2"] || ""}
+          onChange={(e) => handleEdit(idx, "C2", e.target.value)}
+          fullWidth
+          variant="outlined"
+          size="small"
+        />
+      </TableCell>
+      <TableCell>{row["TÊN BỘ PHẬN"] || "N/A"}</TableCell> {/* Thêm cột "Tên bộ phận" */}
+    </TableRow>
+  ))}
+</TableBody>
+
+        </Table>
+      </TableContainer>
+
+      <ToastContainer />
+    </Container>
   );
 };
 
