@@ -11,3 +11,42 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+.late-cell {
+  background-color: #f28b82 !important;
+  color: #fff !important;
+}
+#print-area {
+  font-family: 'Times New Roman', serif;
+  font-size: 14px;
+}
+
+h1 {
+  font-family: 'Times New Roman', serif;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+table th, table td {
+  border: 1px solid black;
+  text-align: center;
+  padding: 8px;
+}
+
+table th {
+  background-color: #f2f2f2;
+}
+
+.signature-section {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 50px;
+}
+
+.signature-box {
+  text-align: center;
+}
