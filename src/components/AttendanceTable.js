@@ -1,90 +1,152 @@
-import React, { memo, useCallback, useState } from 'react';
-import { DataGrid } from '@mui/x-data-grid';
-import { MenuItem, Select, FormControl, InputLabel } from '@mui/material';
+import React, { memo, useCallback, useMemo, useState } from "react";
+import { DataGrid } from "@mui/x-data-grid";
+import { MenuItem, Select, FormControl, InputLabel } from "@mui/material";
+import { isLate, isValidTime } from "../utils/timeUtils";
+import { useSnackbar } from 'notistack';
+import WarningIcon from '@mui/icons-material/Warning';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+
+const validateNewValue = (fieldName, newValue, enqueueSnackbar) => {
+  if (!newValue) {
+    enqueueSnackbar('Giá trị không được để trống.', { variant: 'error' });
+    return false;
+  }
+  if (["S1", "S2", "C1", "C2"].includes(fieldName)) {
+    if (!isValidTime(newValue)) {
+      enqueueSnackbar(`Giờ nhập cho cột ${fieldName} không hợp lệ. Vui lòng nhập lại theo định dạng hh:mm.`, { 
+        variant: 'error' 
+      });
+      return false;
+    }
+  }
+  return true;
+};
+
+const updateRowData = (newRow, fieldName, onCellUpdate, enqueueSnackbar) => {
+  try {
+    if (typeof onCellUpdate === 'function') {
+      onCellUpdate(newRow.id, fieldName, newRow[fieldName]);
+      enqueueSnackbar('Cập nhật thành công!', { variant: 'success' });
+    } else {
+      enqueueSnackbar('Không thể cập nhật dữ liệu do lỗi hệ thống.', { variant: 'error' });
+    }
+  } catch (error) {
+    enqueueSnackbar('Lỗi khi cập nhật dữ liệu. Vui lòng thử lại.', { variant: 'error' });
+  }
+};
 
 const AttendanceTable = memo(({ rows, onCellUpdate }) => {
-  const [selectedDepartment, setSelectedDepartment] = useState('Tất cả');
+  const [selectedDepartment, setSelectedDepartment] = useState("Tất cả");
+  const [filteredRows, setFilteredRows] = useState([]);
+  const { enqueueSnackbar } = useSnackbar();
 
-  // Lọc dữ liệu theo bộ phận
-  const handleDepartmentChange = (event) => {
-    setSelectedDepartment(event.target.value);
-  };
+  const handleProcessRowUpdate = useCallback(
+    (newRow, oldRow) => {
+      try {
+        const updatedRow = { ...newRow };
+        const fieldName = Object.keys(newRow).find((key) => newRow[key] !== oldRow[key]);
 
-  // Lọc dữ liệu theo bộ phận
-  const filteredRows = selectedDepartment === 'Tất cả'
-    ? rows
-    : rows.filter(row => row['TÊN BỘ PHẬN'] === selectedDepartment);
+        if (fieldName) {
+          const isValid = validateNewValue(fieldName, newRow[fieldName], enqueueSnackbar);
+          if (!isValid) return oldRow;
 
-  // Xử lý cập nhật dữ liệu khi người dùng chỉnh sửa các ô
-  const handleProcessRowUpdate = useCallback((newRow, oldRow) => {
-    const updatedRow = { ...newRow };
-    const fieldName = Object.keys(newRow).find(key => newRow[key] !== oldRow[key]);
-    if (fieldName) {
-      onCellUpdate(newRow.id, fieldName, newRow[fieldName]);
-    }
-    return updatedRow;
-  }, [onCellUpdate]);
+          updateRowData(updatedRow, fieldName, onCellUpdate, enqueueSnackbar);
+        }
 
-  // Hàm kiểm tra đi trễ cho S1 (trễ sau 07:15) và C1 (trễ sau 13:00)
-  const isLate = (time, threshold) => {
-    if (!time || time === 'Chưa ghi nhận') return false;
-    const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/; // Regex kiểm tra định dạng hh:mm
-    if (!timeRegex.test(time)) return false; // Kiểm tra định dạng thời gian hợp lệ
-    const [hours, minutes] = time.split(':').map(Number);
-    const totalMinutes = hours * 60 + minutes;
-    return totalMinutes > threshold;
-  };
+        return updatedRow;
+      } catch (error) {
+        enqueueSnackbar('Lỗi khi cập nhật dữ liệu. Vui lòng thử lại.', { variant: 'error' });
+        return oldRow;
+      }
+    },
+    [onCellUpdate, enqueueSnackbar]
+  );
+
+  useMemo(() => {
+    const filtered =
+      selectedDepartment === "Tất cả"
+        ? rows
+        : rows.filter((row) => row["TÊN BỘ PHẬN"] === selectedDepartment);
+    setFilteredRows(filtered.map((row, index) => ({ ...row, id: index + 1 })));
+  }, [selectedDepartment, rows]);
 
   const columns = [
-    { field: 'id', headerName: 'STT', width: 70 },
-    { field: 'TÊN NHÂN VIÊN', headerName: 'Tên nhân viên', flex: 1, editable: false },
-    { field: 'TÊN BỘ PHẬN', headerName: 'Tên bộ phận', flex: 1, editable: false },
-    { field: 'Ngày', headerName: 'Ngày', flex: 1, editable: false },
-    { 
-      field: 'S1', 
-      headerName: 'S1', 
-      flex: 1, 
+    { field: "id", headerName: "STT", width: 70 },
+    {
+      field: "TÊN NHÂN VIÊN",
+      headerName: "Tên nhân viên",
+      flex: 1,
+      editable: false,
+    },
+    {
+      field: "TÊN BỘ PHẬN",
+      headerName: "Tên bộ phận",
+      flex: 1,
+      editable: false,
+    },
+    { field: "Ngày", headerName: "Ngày", flex: 1, editable: false },
+    {
+      field: "S1",
+      headerName: "S1",
+      flex: 1,
       editable: true,
-      cellClassName: (params) => {
-        if (!params.value || params.value === 'Chưa ghi nhận') return '';
-        return isLate(params.value, 7 * 60 + 15) ? 'late-cell' : '';
-      }
+      renderCell: (params) => (
+        <>
+          {params.value === "Chưa ghi nhận" ? 
+            <HelpOutlineIcon style={{ color: '#FFA500', marginRight: 4 }} /> : 
+            isLate(params.value, 7 * 60 + 15) ? 
+              <WarningIcon style={{ color: '#FF5733', marginRight: 4 }} /> : 
+              <CheckCircleIcon style={{ color: '#4CAF50', marginRight: 4 }} />
+          }
+          {params.value}
+        </>
+      )
     },
-    { 
-      field: 'S2', 
-      headerName: 'S2', 
-      flex: 1, 
-      editable: true 
-    },
-    { 
-      field: 'C1', 
-      headerName: 'C1', 
-      flex: 1, 
+    {
+      field: "S2",
+      headerName: "S2",
+      flex: 1,
       editable: true,
-      cellClassName: (params) => {
-        if (!params.value || params.value === 'Chưa ghi nhận') return '';
-        return isLate(params.value, 13 * 60) ? 'late-cell' : '';
-      }
     },
-    { 
-      field: 'C2', 
-      headerName: 'C2', 
-      flex: 1, 
-      editable: true 
-    }
+    {
+      field: "C1",
+      headerName: "C1",
+      flex: 1,
+      editable: true,
+      renderCell: (params) => (
+        <>
+          {params.value === "Chưa ghi nhận" ? 
+            <HelpOutlineIcon style={{ color: '#FFA500', marginRight: 4 }} /> : 
+            isLate(params.value, 13 * 60) ? 
+              <WarningIcon style={{ color: '#FF5733', marginRight: 4 }} /> : 
+              <CheckCircleIcon style={{ color: '#4CAF50', marginRight: 4 }} />
+          }
+          {params.value}
+        </>
+      )
+    },
+    {
+      field: "C2",
+      headerName: "C2",
+      flex: 1,
+      editable: true,
+    },
   ];
 
-  // Danh sách các bộ phận duy nhất có trong dữ liệu
-  const departmentList = ['Tất cả', ...new Set(rows.map(row => row['TÊN BỘ PHẬN']))];
+  const departmentList = useMemo(
+    () => ["Tất cả", ...new Set(rows.map((row) => row["TÊN BỘ PHẬN"]))],
+    [rows]
+  );
 
   return (
-    <div style={{ height: 650, width: '100%' }}>
-      <FormControl style={{ marginBottom: '20px', width: '200px' }}>
+    <div style={{ height: 650, width: "100%" }}>
+      <FormControl style={{ marginBottom: "20px", width: "200px" }}>
         <InputLabel id="department-filter-label">Lọc theo bộ phận</InputLabel>
         <Select
           labelId="department-filter-label"
           value={selectedDepartment}
-          onChange={handleDepartmentChange}
+          onChange={(event) => setSelectedDepartment(event.target.value)}
         >
           {departmentList.map((department, index) => (
             <MenuItem key={index} value={department}>
@@ -94,21 +156,13 @@ const AttendanceTable = memo(({ rows, onCellUpdate }) => {
         </Select>
       </FormControl>
 
-      <DataGrid 
-        rows={filteredRows} 
-        columns={columns} 
-        processRowUpdate={handleProcessRowUpdate} 
-        disableColumnMenu 
-        experimentalFeatures={{ newEditingApi: true }} 
-        getRowId={(row) => row.id} 
-        sx={{
-          '& .MuiDataGrid-cell--editable': {
-            backgroundColor: '#F0F8FF'
-          },
-          '& .late-cell': {
-            backgroundColor: '#FFCCCB !important' // Màu đỏ nhạt cho ô đi trễ
-          }
-        }}
+      <DataGrid
+        rows={filteredRows}
+        columns={columns}
+        processRowUpdate={handleProcessRowUpdate}
+        disableColumnMenu
+        experimentalFeatures={{ newEditingApi: true }}
+        getRowId={(row) => row.id}
       />
     </div>
   );
