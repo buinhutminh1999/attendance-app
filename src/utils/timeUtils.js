@@ -10,14 +10,36 @@ export const isValidTime = (time) => {
 };
 
 /**
- * Kiểm tra xem thời gian có trễ hơn ngưỡng không
+ * Kiểm tra xem thời gian có được coi là trễ hay không (xử lý riêng cho C2)
  * @param {string} time - Thời gian dưới dạng chuỗi 'hh:mm'
- * @param {number} threshold - Ngưỡng thời gian tính bằng phút (ví dụ: 7:15 là 7 * 60 + 15 = 435 phút)
- * @returns {boolean} Trả về true nếu thời gian vượt ngưỡng, ngược lại là false
+ * @param {string} column - Cột đang kiểm tra ('S1', 'S2', 'C1', 'C2')
+ * @returns {boolean} Trả về true nếu thời gian là trễ, ngược lại là false
  */
-export const isLate = (time, threshold) => {
-  if (!isValidTime(time)) return false; // Kiểm tra xem thời gian có hợp lệ hay không
+export const isLate = (time, column) => {
+  if (!isValidTime(time)) return false;
+
   const [hours, minutes] = time.split(':').map(Number);
   const totalMinutes = hours * 60 + minutes;
-  return totalMinutes > threshold;
+
+  const MORNING_START = 435; // 07:15
+  const MORNING_END = 675;   // 11:15
+  const AFTERNOON_START = 780; // 13:00
+  const AFTERNOON_END = 1015;  // 17:15
+
+  // Xử lý riêng cho C2
+  if (column === "C2") {
+    return totalMinutes > AFTERNOON_END; // Trễ nếu < 17:15
+  }
+
+  // Sáng: Trễ nếu > 07:15 và <= 11:15
+  if (totalMinutes > MORNING_START && totalMinutes <= MORNING_END) {
+    return true;
+  }
+
+  // Chiều: Trễ nếu > 13:00
+  if (totalMinutes > AFTERNOON_START) {
+    return true;
+  }
+
+  return false; // Không trễ
 };

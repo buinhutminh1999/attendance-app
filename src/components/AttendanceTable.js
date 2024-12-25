@@ -2,21 +2,21 @@ import React, { memo, useCallback, useMemo, useState } from "react";
 import { DataGrid } from "@mui/x-data-grid";
 import { MenuItem, Select, FormControl, InputLabel } from "@mui/material";
 import { isLate, isValidTime } from "../utils/timeUtils";
-import { useSnackbar } from 'notistack';
-import WarningIcon from '@mui/icons-material/Warning';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
+import { useSnackbar } from "notistack";
 
 const validateNewValue = (fieldName, newValue, enqueueSnackbar) => {
   if (!newValue) {
-    enqueueSnackbar('Giá trị không được để trống.', { variant: 'error' });
+    enqueueSnackbar("Giá trị không được để trống.", { variant: "error" });
     return false;
   }
   if (["S1", "S2", "C1", "C2"].includes(fieldName)) {
     if (!isValidTime(newValue)) {
-      enqueueSnackbar(`Giờ nhập cho cột ${fieldName} không hợp lệ. Vui lòng nhập lại theo định dạng hh:mm.`, { 
-        variant: 'error' 
-      });
+      enqueueSnackbar(
+        `Giờ nhập cho cột ${fieldName} không hợp lệ. Vui lòng nhập lại theo định dạng hh:mm.`,
+        {
+          variant: "error",
+        }
+      );
       return false;
     }
   }
@@ -25,14 +25,18 @@ const validateNewValue = (fieldName, newValue, enqueueSnackbar) => {
 
 const updateRowData = (newRow, fieldName, onCellUpdate, enqueueSnackbar) => {
   try {
-    if (typeof onCellUpdate === 'function') {
+    if (typeof onCellUpdate === "function") {
       onCellUpdate(newRow.id, fieldName, newRow[fieldName]);
-      enqueueSnackbar('Cập nhật thành công!', { variant: 'success' });
+      enqueueSnackbar("Cập nhật thành công!", { variant: "success" });
     } else {
-      enqueueSnackbar('Không thể cập nhật dữ liệu do lỗi hệ thống.', { variant: 'error' });
+      enqueueSnackbar("Không thể cập nhật dữ liệu do lỗi hệ thống.", {
+        variant: "error",
+      });
     }
   } catch (error) {
-    enqueueSnackbar('Lỗi khi cập nhật dữ liệu. Vui lòng thử lại.', { variant: 'error' });
+    enqueueSnackbar("Lỗi khi cập nhật dữ liệu. Vui lòng thử lại.", {
+      variant: "error",
+    });
   }
 };
 
@@ -45,10 +49,16 @@ const AttendanceTable = memo(({ rows, onCellUpdate }) => {
     (newRow, oldRow) => {
       try {
         const updatedRow = { ...newRow };
-        const fieldName = Object.keys(newRow).find((key) => newRow[key] !== oldRow[key]);
+        const fieldName = Object.keys(newRow).find(
+          (key) => newRow[key] !== oldRow[key]
+        );
 
         if (fieldName) {
-          const isValid = validateNewValue(fieldName, newRow[fieldName], enqueueSnackbar);
+          const isValid = validateNewValue(
+            fieldName,
+            newRow[fieldName],
+            enqueueSnackbar
+          );
           if (!isValid) return oldRow;
 
           updateRowData(updatedRow, fieldName, onCellUpdate, enqueueSnackbar);
@@ -56,7 +66,9 @@ const AttendanceTable = memo(({ rows, onCellUpdate }) => {
 
         return updatedRow;
       } catch (error) {
-        enqueueSnackbar('Lỗi khi cập nhật dữ liệu. Vui lòng thử lại.', { variant: 'error' });
+        enqueueSnackbar("Lỗi khi cập nhật dữ liệu. Vui lòng thử lại.", {
+          variant: "error",
+        });
         return oldRow;
       }
     },
@@ -91,17 +103,6 @@ const AttendanceTable = memo(({ rows, onCellUpdate }) => {
       headerName: "S1",
       flex: 1,
       editable: true,
-      renderCell: (params) => (
-        <>
-          {params.value === "Chưa ghi nhận" ? 
-            <HelpOutlineIcon style={{ color: '#FFA500', marginRight: 4 }} /> : 
-            isLate(params.value, 7 * 60 + 15) ? 
-              <WarningIcon style={{ color: '#FF5733', marginRight: 4 }} /> : 
-              <CheckCircleIcon style={{ color: '#4CAF50', marginRight: 4 }} />
-          }
-          {params.value}
-        </>
-      )
     },
     {
       field: "S2",
@@ -114,17 +115,6 @@ const AttendanceTable = memo(({ rows, onCellUpdate }) => {
       headerName: "C1",
       flex: 1,
       editable: true,
-      renderCell: (params) => (
-        <>
-          {params.value === "Chưa ghi nhận" ? 
-            <HelpOutlineIcon style={{ color: '#FFA500', marginRight: 4 }} /> : 
-            isLate(params.value, 13 * 60) ? 
-              <WarningIcon style={{ color: '#FF5733', marginRight: 4 }} /> : 
-              <CheckCircleIcon style={{ color: '#4CAF50', marginRight: 4 }} />
-          }
-          {params.value}
-        </>
-      )
     },
     {
       field: "C2",
