@@ -29,14 +29,14 @@ const Home = () => {
       const c1Minutes = timeToMinutes(processedRow.C1);
       const c2Minutes = timeToMinutes(processedRow.C2);
 
-      const MORNING_END = 11 * 60 + 15; // 11:15 in minutes
+      const MORNING_END = 12 * 60; // 11:15 in minutes
 
       // Trường hợp 1: Nếu tất cả bốn thời gian có sẵn, không làm gì
       if (s1Minutes && s2Minutes && c1Minutes && c2Minutes) {
         return processedRow;
       }
 
-      if (s1Minutes > MORNING_END) {
+      if (s1Minutes > MORNING_END) { 
         processedRow.C1 = processedRow.S1;
         processedRow.C2 = processedRow.S2;
         processedRow.S1 = "❌";

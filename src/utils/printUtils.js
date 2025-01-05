@@ -9,6 +9,7 @@ export const generatePrintContent = (filteredData) => {
   const departments = Array.from(
     new Set(filteredData.map((row) => row["TÊN BỘ PHẬN"]))
   );
+
   return departments
     .map((department, index) => {
       const departmentData = filteredData
@@ -17,7 +18,21 @@ export const generatePrintContent = (filteredData) => {
 
       return `
         ${index > 0 ? `<div style="page-break-before: always;"></div>` : ""}
-        <h1 style="text-align: center; font-size: 24px; font-weight: bold;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <div style="text-align: left; width: 50%; padding-left: 10px;">
+            <p style="font-size: 16px; font-weight: bold; text-transform: uppercase; margin: 0;">
+              CTY CP XY BÁCH KHOA
+            </p>
+            <p style="font-size: 14px; margin: 0;">AN GIANG</p>
+          </div>
+          <div style="text-align: right; width: 50%; padding-right: 10px;">
+            <p style="font-size: 14px; font-weight: bold; margin: 0; text-transform: uppercase;">
+              CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+            </p>
+            <p style="font-size: 14px; margin: 0;">Độc lập – Tự do – Hạnh phúc</p>
+          </div>
+        </div>
+        <h1 style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px;">
           Bảng công từ ngày ${departmentData[0]?.["Ngày"] || ""} đến ngày ${
         departmentData[departmentData.length - 1]?.["Ngày"] || ""
       } - Bộ phận: ${department}
@@ -28,6 +43,7 @@ export const generatePrintContent = (filteredData) => {
     })
     .join("");
 };
+
 
 /**
  * Tạo bảng dữ liệu cho in ấn
@@ -74,8 +90,7 @@ const generateTable = (departmentData) => `
               isLate(row["C1"], 13 * 60) ? "#FFCCCB" : "transparent"
             };">
               ${row["C1"] || "❌"}
-         <td style="background-color: ${
-           row["C2"]};">
+         <td style="background-color: ${row["C2"]};">
   ${row["C2"] || "❌"}
 </td>
 
