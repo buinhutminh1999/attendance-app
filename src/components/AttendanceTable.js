@@ -1,91 +1,267 @@
-
-import React, { memo, useCallback, useMemo, useState } from "react";
-import { DataGrid } from "@mui/x-data-grid";
-import { MenuItem, Select, FormControl, InputLabel, Tooltip } from "@mui/material";
-import { validateNewValue } from "../utils/attendanceUtils";
+// src/components/AttendanceTable.js
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  memo,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  TextField,
+  CircularProgress,
+  useTheme,
+  useMediaQuery,
+} from "@mui/material";
+import { collection, getDocs, doc, setDoc } from "firebase/firestore";
+import { db } from "../firebase";
 import { useSnackbar } from "notistack";
+import { isLate } from "../utils/timeUtils";   // ← import isLate
 
-const AttendanceTable = memo(({ rows, onCellUpdate }) => {
-  const [selectedDepartment, setSelectedDepartment] = useState("Tất cả");
-  const { enqueueSnackbar } = useSnackbar();
+const LATE_COLLECTION = "lateReasons";
+const WEEKDAY = ["Chủ Nhật","Hai","Ba","Tư","Năm","Sáu","Bảy"];
 
-  const handleProcessRowUpdate = useCallback(
-    (newRow, oldRow) => {
-      const updatedRow = { ...newRow };
-      const fieldName = Object.keys(newRow).find(
-        (key) => newRow[key] !== oldRow[key]
-      );
+// helper parse "dd/MM/yyyy" → Date
+const parseDate = (s) => {
+  const [dd, mm, yyyy] = s.split("/").map(Number);
+  return new Date(yyyy, mm - 1, dd);
+};
 
-      if (fieldName) {
-        const isValid = validateNewValue(fieldName, newRow[fieldName], enqueueSnackbar);
-        if (!isValid) return oldRow;
+/**
+ * Một row memoized để tránh re-render hàng loạt khi gõ
+ */
+const AttendanceRow = memo(function AttendanceRow({
+  idx,
+  row,
+  reason = {},
+  editing,
+  onStartEdit,
+  onChangeValue,
+  onSave,
+}) {
+  const dateObj = parseDate(row.Ngày);
+  const weekday = WEEKDAY[dateObj.getDay()];
+  const isSat = dateObj.getDay() === 6;
 
-        onCellUpdate(newRow.id, fieldName, newRow[fieldName]);
-      }
+  // giá trị C1/C2 trên thứ 7 là "—"
+  const c1Val = isSat ? "—" : row.C1 || "❌";
+  const c2Val = isSat ? "—" : row.C2 || "❌";
 
-      return updatedRow;
-    },
-    [onCellUpdate, enqueueSnackbar]
-  );
-
-  const filteredRows = useMemo(() => {
-    return rows
-      .filter((row) =>
-        selectedDepartment === "Tất cả"
-          ? true
-          : row["TÊN BỘ PHẬN"] === selectedDepartment
-      )
-      .map((row, index) => ({
-        ...row,
-        id: index + 1,
-      }));
-  }, [rows, selectedDepartment]);
-
-  const departmentList = useMemo(() => ["Tất cả", ...new Set(rows.map((row) => row["TÊN BỘ PHẬN"]))], [rows]);
+  // cell có thể edit
+  const renderEditable = (field, val) => {
+    const isActive =
+      editing?.rowId === row.id && editing.field === field;
+    return (
+      <TableCell
+        onClick={() => {
+          if (field === "afternoon" && isSat) return;
+          onStartEdit(row.id, field, val);
+        }}
+        sx={{
+          cursor:
+            field === "afternoon" && isSat ? "default" : "pointer",
+          backgroundColor: isActive ? "#eef" : "inherit",
+        }}
+      >
+        {isActive ? (
+          <TextField
+            size="small"
+            autoFocus
+            fullWidth
+            value={editing.value}
+            onChange={(e) => onChangeValue(e.target.value)}
+            onBlur={() => onSave(editing.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") onSave(editing.value);
+            }}
+          />
+        ) : (
+          val
+        )}
+      </TableCell>
+    );
+  };
 
   return (
-    <div style={{ height: 650, width: "100%" }}>
-      <FormControl style={{ marginBottom: "20px", width: "200px" }}>
-        <InputLabel id="department-filter-label">Lọc theo bộ phận</InputLabel>
-        <Select
-          labelId="department-filter-label"
-          value={selectedDepartment}
-          onChange={(event) => setSelectedDepartment(event.target.value)}
-        >
-          {departmentList.map((department, index) => (
-            <MenuItem key={index} value={department}>
-              {department}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+    <TableRow>
+      <TableCell>{idx + 1}</TableCell>
+      <TableCell>{row["Tên nhân viên"]}</TableCell>
+      <TableCell>{row["Tên bộ phận"]}</TableCell>
+      <TableCell>{row.Ngày}</TableCell>
+      <TableCell>{weekday}</TableCell>
 
-      <Tooltip title="Bảng chấm công" arrow>
-        <DataGrid
-          rows={filteredRows}
-          columns={[
-            { field: "id", headerName: "STT", width: 70 },
-            { field: "TÊN NHÂN VIÊN", headerName: "Tên nhân viên", flex: 1 },
-            { field: "TÊN BỘ PHẬN", headerName: "Tên bộ phận", flex: 1 },
-            { field: "Ngày", headerName: "Ngày", flex: 1 },
-            { field: "S1", headerName: "S1", flex: 1, editable: true },
-            { field: "S2", headerName: "S2", flex: 1, editable: true },
-            { field: "C1", headerName: "C1", flex: 1, editable: true },
-            { field: "C2", headerName: "C2", flex: 1, editable: true },
-          ]}
-          processRowUpdate={handleProcessRowUpdate}
-          disableColumnMenu
-          experimentalFeatures={{ newEditingApi: true }}
-          getRowId={(row) => row.id}
-          sx={{
-            "& .MuiDataGrid-row:hover": {
-              backgroundColor: "rgba(0, 0, 0, 0.04)",
-            },
-          }}
-        />
-      </Tooltip>
-    </div>
+      {/* ★ Highlight S1 nếu sau 07:15 */}
+      <TableCell
+        sx={{
+          backgroundColor:
+            row.S1 && isLate(row.S1, 7 * 60 + 15)
+              ? "#FFCCCC"
+              : "inherit",
+        }}
+      >
+        {row.S1 || "❌"}
+      </TableCell>
+
+      <TableCell>{row.S2 || "❌"}</TableCell>
+
+      {/* lý do trễ sáng */}
+      {renderEditable("morning", reason.morning || "")}
+
+      {/* ★ Highlight C1 nếu sau 13:00 */}
+      <TableCell
+        sx={{
+          backgroundColor:
+            c1Val !== "—" && isLate(c1Val, 13 * 60)
+              ? "#FFCCCC"
+              : "inherit",
+        }}
+      >
+        {c1Val}
+      </TableCell>
+
+      <TableCell>{c2Val}</TableCell>
+
+      {/* lý do trễ chiều (bỏ edit thứ 7) */}
+      {isSat ? (
+        <TableCell>—</TableCell>
+      ) : (
+        renderEditable("afternoon", reason.afternoon || "")
+      )}
+    </TableRow>
+  );
+},
+// chỉ re-render khi chính row này hoặc editing/values thay đổi
+(prev, next) => {
+  return (
+    prev.row === next.row &&
+    prev.reason === next.reason &&
+    !prev.editing &&
+    !next.editing
   );
 });
 
-export default AttendanceTable;
+export default forwardRef(function AttendanceTable(
+  { rows = [], onReasonSave },
+  ref
+) {
+  const [reasons, setReasons] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState({
+    rowId: null,
+    field: null,
+    value: "",
+  });
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const { enqueueSnackbar } = useSnackbar();
+
+  // load lý do từ Firestore
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDocs(
+          collection(db, LATE_COLLECTION)
+        );
+        const map = {};
+        snap.forEach((d) => (map[d.id] = d.data()));
+        setReasons(map);
+      } catch (err) {
+        enqueueSnackbar("Lỗi khi tải lý do", {
+          variant: "error",
+        });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [enqueueSnackbar]);
+
+  // save 1 lý do
+  const saveReason = useCallback(
+    async (newVal) => {
+      const { rowId, field } = editing;
+      if (!rowId || !field) return;
+      // 1) cập nhật local
+      setReasons((r) => ({
+        ...r,
+        [rowId]: { ...r[rowId], [field]: newVal },
+      }));
+      // 2) báo Home cập nhật ngay để in được
+      onReasonSave?.(rowId, field, newVal);
+      // 3) clear editing
+      setEditing({ rowId: null, field: null, value: "" });
+      // 4) lưu lên Firestore
+      try {
+        await setDoc(
+          doc(db, LATE_COLLECTION, rowId),
+          { [field]: newVal },
+          { merge: true }
+        );
+        enqueueSnackbar("Lưu lý do thành công!", {
+          variant: "success",
+        });
+      } catch {
+        enqueueSnackbar("Lỗi khi lưu lý do", {
+          variant: "error",
+        });
+      }
+    },
+    [editing, enqueueSnackbar, onReasonSave]
+  );
+
+  if (loading) {
+    return (
+      <CircularProgress
+        sx={{ display: "block", mx: "auto", my: 4 }}
+      />
+    );
+  }
+
+  return (
+    <TableContainer component={Paper}>
+      <Table size={isMobile ? "small" : "medium"}>
+        <TableHead>
+          <TableRow>
+            <TableCell>STT</TableCell>
+            <TableCell>Tên nhân viên</TableCell>
+            <TableCell>Tên bộ phận</TableCell>
+            <TableCell>Ngày</TableCell>
+            <TableCell>Thứ</TableCell>
+            <TableCell>S1</TableCell>
+            <TableCell>S2</TableCell>
+            <TableCell>Lý do trễ (Sáng)</TableCell>
+            <TableCell>C1</TableCell>
+            <TableCell>C2</TableCell>
+            <TableCell>Lý do trễ (Chiều)</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((r, i) => (
+            <AttendanceRow
+              key={r.id}
+              idx={i}
+              row={r}
+              reason={reasons[r.id] || {}}
+              editing={
+                editing.rowId === r.id ? editing : null
+              }
+              onStartEdit={(rid, field, val) =>
+                setEditing({ rowId: rid, field, value: val })
+              }
+              onChangeValue={(v) =>
+                setEditing((p) => ({ ...p, value: v }))
+              }
+              onSave={saveReason}
+            />
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+});

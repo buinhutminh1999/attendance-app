@@ -1,114 +1,139 @@
-/**
- * Tạo nội dung in ấn cho từng bộ phận
- * @param {Array} filteredData - Dữ liệu đã lọc
- * @returns {string} Nội dung HTML cho tất cả các bộ phận
- */
+// src/utils/printUtils.js
 import { isLate } from "./timeUtils";
 
-export const generatePrintContent = (filteredData) => {
-  const departments = Array.from(
-    new Set(filteredData.map((row) => row["TÊN BỘ PHẬN"]))
-  );
-
-  return departments
-    .map((department, index) => {
-      const departmentData = filteredData
-        .filter((row) => row["TÊN BỘ PHẬN"] === department)
-        .map((row, index) => ({ ...row, id: index + 1 }));
-
-      return `
-        ${index > 0 ? `<div style="page-break-before: always;"></div>` : ""}
-        <h1 style="text-align: center; font-size: 24px; font-weight: bold; margin-bottom: 20px;">
-          Bảng công từ ngày ${departmentData[0]?.["Ngày"] || ""} đến ngày ${
-        departmentData[departmentData.length - 1]?.["Ngày"] || ""
-      } - Bộ phận: ${department}
-        </h1>
-        ${generateTable(departmentData)} 
-        ${generateSignSection(departmentData.length > 0)}
-      `;
-    })
-    .join("");
-};
-
+const WEEKDAYS = ["Chủ Nhật", "Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy"];
 
 /**
- * Tạo bảng dữ liệu cho in ấn
- * @param {Array} departmentData - Dữ liệu của từng bộ phận
- * @returns {string} Nội dung HTML của bảng
+ * Mở cửa sổ in với toàn bộ CSS và in ngay.
+ * @param {Array} rowsToPrint – mảng các bản ghi đã filter
+ * @param {string} dept – tên bộ phận đang in
  */
-const generateTable = (departmentData) => `
-  <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-family: 'Times New Roman', serif;">
-    <thead>
+export function printStyledAttendance(rowsToPrint, dept) {
+  if (!rowsToPrint.length) return;
+
+  const firstDate = rowsToPrint[0].Ngày;
+  const lastDate = rowsToPrint[rowsToPrint.length - 1].Ngày;
+  const title = `Bảng công từ ngày ${firstDate} đến ngày ${lastDate} - Bộ phận: ${dept}`;
+
+  const style = `
+    <style>
+      @page { size: A4 landscape; margin: 20px; }
+      body { font-family: "Times New Roman", serif; font-size: 14px; }
+      h1 {
+        text-align: center;
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 20px;
+      }
+      table { width:100%; border-collapse: collapse; }
+      th, td {
+        border:1px solid #000;
+        padding:6px;
+        text-align:center;
+        font-size:12px;
+      }
+      th { background:#f2f2f2; }
+      .dashed { border-bottom:1px dashed #000; }
+      .late { background:#FFCCCC; }
+      .no-data { color:#999; }
+      .note {
+        font-size:12px;
+        margin-top:10px;
+      }
+      .signature {
+        display:flex;
+        justify-content:space-between;
+        margin-top:40px;
+      }
+      .signature div {
+        width:40%;
+        text-align:center;
+      }
+      .signature p {
+        font-weight:bold;
+        margin-bottom:60px;
+      }
+    </style>
+  `;
+
+  const rowsHtml = rowsToPrint.map((r,i) => {
+    const [dd,mm,yyyy] = r.Ngày.split("/").map(Number);
+    const d = new Date(yyyy, mm-1, dd);
+    const weekday = WEEKDAYS[d.getDay()];
+    const isSat = d.getDay() === 6;
+    const s1 = r.S1||"", s2 = r.S2||"", c1 = r.C1||"", c2 = r.C2||"";
+    const m  = (r.morning   ||"").trim();
+    const a  = (r.afternoon ||"").trim();
+
+    return `
       <tr>
-        <th>STT</th>
-        <th>Tên nhân viên</th>
-        <th>Ngày</th>
-        <th>Thứ</th>
-        <th>S1</th>
-        <th>S2</th>
-        <th>Lý do đi trễ (Sáng)</th>
-        <th>C1</th>
-        <th>C2</th>
-        <th>Lý do đi trễ (Chiều)</th>
+        <td>${i+1}</td>
+        <td>${r["Tên nhân viên"]}</td>
+        <td>${r.Ngày}</td>
+        <td>${weekday}</td>
+        <td class="${isLate(s1,7*60+15) ? "late":""}">${s1 || "❌"}</td>
+        <td class="${isLate(s2,7*60+15) ? "late":""}">${s2 || "❌"}</td>
+        <td class="dashed">${m}</td>
+        <td class="${isSat?"no-data": isLate(c1,13*60)?"late":""}">
+          ${isSat?"—":(c1||"❌")}
+        </td>
+        <td class="${isSat?"no-data": isLate(c2,13*60)?"late":""}">
+          ${isSat?"—":(c2||"❌")}
+        </td>
+        <td class="dashed">${isSat?"":a}</td>
       </tr>
-    </thead>
-    <tbody>
-      ${departmentData
-        .map(
-          (row, index) => `
-          <tr>
-            <td>${index + 1}</td>
-            <td>${row["TÊN NHÂN VIÊN"] || "❌"}</td>
-            <td>${row["Ngày"] || "❌"}</td>
-            <td>${row["Thứ"] || "❌"}</td>
-            <td style="background-color: ${
-              isLate(row["S1"], 7 * 60 + 15) ? "#FFCCCB" : "transparent"
-            };">
-              ${row["S1"] || "❌"}
-            </td>
-            <td style="background-color: ${
-              isLate(row["S2"], 7 * 60 + 15) ? "#FFCCCB" : "transparent"
-            };">
-              ${row["S2"] || "❌"}
-            </td>
-            <td style="border-bottom: 1px dashed #000; width: 20%;"></td>
-            <td style="background-color: ${
-              isLate(row["C1"], 13 * 60) ? "#FFCCCB" : "transparent"
-            };">
-              ${row["C1"] || "❌"}
-         <td style="background-color: ${row["C2"]};">
-  ${row["C2"] || "❌"}
-</td>
+    `;
+  }).join("");
 
+  const html = `
+    <html>
+      <head>
+        <title>In bảng chấm công</title>
+        ${style}
+      </head>
+      <body>
+        <h1>${title}</h1>
+        <table>
+          <thead>
+            <tr>
+              <th>STT</th>
+              <th>Tên nhân viên</th>
+              <th>Ngày</th>
+              <th>Thứ</th>
+              <th>S1</th>
+              <th>S2</th>
+              <th>Lý do trễ (Sáng)</th>
+              <th>C1</th>
+              <th>C2</th>
+              <th>Lý do trễ (Chiều)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
 
-            <td style="border-bottom: 1px dashed #000; width: 20%;"></td>
-          </tr>
-        `
-        )
-        .join("")}
-    </tbody>
-  </table>
-  <p style="font-size: 12px; margin-top: 10px;">
-    <strong>Ghi chú:</strong> 
-    ❌: Chưa ghi nhận dữ liệu chấm công | 
-    S1, S2: Chấm công sáng | C1, C2: Chấm công chiều.
-  </p>
-`;
-/**
- * Tạo phần xác nhận của lãnh đạo và người lập
- * @param {boolean} hasData - Xác định xem có dữ liệu cho bộ phận hay không
- * @returns {string} Nội dung HTML của phần xác nhận
- */
-const generateSignSection = (hasData) =>
-  hasData
-    ? `
-    <div style="display: flex; justify-content: space-between; margin-top: 50px;">
-      <div style="text-align: center; width: 40%;">
-        <p style="font-size: 16px; font-weight: bold;">Xác nhận của lãnh đạo bộ phận</p>
-      </div>
-      <div style="text-align: center; width: 40%;">
-        <p style="font-size: 16px; font-weight: bold;">Người lập</p>
-      </div>
-    </div>
-  `
-    : "";
+        <!-- PHẦN GHI CHÚ MỚI -->
+        <p class="note">
+          <strong>Ghi chú:</strong>
+          ❌: Chưa ghi nhận dữ liệu chấm công |
+          S1, S2: Chấm công sáng |
+          C1, C2: Chấm công chiều.
+        </p>
+
+        <!-- PHẦN KÝ XÁC NHẬN -->
+        <div class="signature">
+          <div><p>Xác nhận lãnh đạo</p></div>
+          <div><p>Người lập</p></div>
+        </div>
+      </body>
+    </html>
+  `;
+
+  const win = window.open("", "_blank");
+  win.document.write(html);
+  win.document.close();
+  win.focus();
+  win.print();
+  win.onafterprint = () => win.close();
+}
