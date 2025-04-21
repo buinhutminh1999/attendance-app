@@ -1,45 +1,32 @@
-/**
- * Kiểm tra thời gian có định dạng hh:mm hợp lệ hay không
- * @param {string} time - Thời gian dưới dạng chuỗi 'hh:mm'
- * @returns {boolean} Trả về true nếu hợp lệ, ngược lại là false
- */
-export const isValidTime = (time) => {
-  if (!time) return false;
-  const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/; // Định dạng hh:mm (00:00 đến 23:59)
-  return timeRegex.test(time);
-};
+// src/utils/timeUtils.js
 
 /**
- * Kiểm tra xem thời gian có được coi là trễ hay không (xử lý riêng cho C2)
- * @param {string} time - Thời gian dưới dạng chuỗi 'hh:mm'
- * @param {string} column - Cột đang kiểm tra ('S1', 'S2', 'C1', 'C2')
- * @returns {boolean} Trả về true nếu thời gian là trễ, ngược lại là false
+ * Kiểm tra chuỗi có đúng định dạng "HH:MM"
  */
-export const isLate = (time, column) => {
-  if (!isValidTime(time)) return false;
+export function isTimeString(s) {
+  return typeof s === "string" && /^\d{1,2}:\d{2}$/.test(s);
+}
 
-  const [hours, minutes] = time.split(':').map(Number);
-  const totalMinutes = hours * 60 + minutes;
+/**
+ * Chuyển "HH:MM" → tổng phút từ 00:00
+ */
+export function parseTimeToMinutes(s) {
+  const [h, m] = s.split(":").map((x) => Number(x));
+  return h * 60 + m;
+}
 
-  const MORNING_START = 435; // 07:15
-  const MORNING_END = 675;   // 11:15
-  const AFTERNOON_START = 780; // 13:00
-  const AFTERNOON_END = 1015;  // 17:15
+/**
+ * Trễ: khi timeStr > threshold (phút)
+ */
+export function isLate(timeStr, threshold) {
+  if (!isTimeString(timeStr)) return false;
+  return parseTimeToMinutes(timeStr) > threshold;
+}
 
-  // Xử lý riêng cho C2
-  if (column === "C2") {
-    return totalMinutes > AFTERNOON_END; // Trễ nếu < 17:15
-  }
-
-  // Sáng: Trễ nếu > 07:15 và <= 11:15
-  if (totalMinutes > MORNING_START && totalMinutes <= MORNING_END) {
-    return true;
-  }
-
-  // Chiều: Trễ nếu > 13:00
-  if (totalMinutes > AFTERNOON_START) {
-    return true;
-  }
-
-  return false; // Không trễ
-};
+/**
+ * Ra sớm: khi timeStr < threshold (phút)
+ */
+export function isEarly(timeStr, threshold) {
+  if (!isTimeString(timeStr)) return false;
+  return parseTimeToMinutes(timeStr) < threshold;
+}
