@@ -1,14 +1,17 @@
+// src/App.js
 import React from 'react';
 import { Container, Typography, IconButton } from '@mui/material';
 import { SnackbarProvider } from 'notistack';
 import CloseIcon from '@mui/icons-material/Close';
+
+// --- MỚI: import adapter cho date pickers ---
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+
 import Home from './pages/Home';
 
 function App() {
-  // Dùng ref để điều khiển hành vi của SnackbarProvider
   const notistackRef = React.createRef();
-
-  // Hàm để đóng thông báo
   const onClickDismiss = (key) => () => {
     notistackRef.current.closeSnackbar(key);
   };
@@ -19,19 +22,26 @@ function App() {
       maxSnack={3} 
       anchorOrigin={{ vertical: 'top', horizontal: 'center' }} 
       autoHideDuration={3000}
-      preventDuplicate={true} // Ngăn không hiển thị thông báo trùng lặp
+      preventDuplicate
       action={(key) => (
-        <IconButton onClick={onClickDismiss(key)} style={{ color: '#fff' }}>
+        <IconButton onClick={onClickDismiss(key)} sx={{ color: '#fff' }}>
           <CloseIcon />
         </IconButton>
       )}
     >
-      <Container maxWidth="lg">
-        <Typography variant="h4" align="center" sx={{ mt: 4, mb: 2 }}>
-          Ứng dụng chấm công
-        </Typography>
-        <Home />
-      </Container>
+      {/* MỞ: Bọc toàn app trong LocalizationProvider */}
+      <LocalizationProvider dateAdapter={AdapterDateFns}>
+        <Container maxWidth="lg">
+          <Typography 
+            variant="h4" 
+            align="center" 
+            sx={{ mt: 4, mb: 2 }}
+          >
+            Ứng dụng chấm công
+          </Typography>
+          <Home />
+        </Container>
+      </LocalizationProvider>
     </SnackbarProvider>
   );
 }
