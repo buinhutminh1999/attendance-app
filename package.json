@@ -8,9 +8,6 @@
     "@mui/icons-material": "^6.2.1",
     "@mui/material": "^6.4.11",
     "@mui/x-data-grid": "^7.29.0",
-    "@mui/x-date-pickers": "^5.0.13",
-    "cra-template": "1.2.0",
-    "date-fns": "^2.30.0",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
     "firebase": "^11.6.0",
@@ -30,15 +27,7 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+    "build": "react-scripts build"
   },
   "browserslist": {
     "production": [
