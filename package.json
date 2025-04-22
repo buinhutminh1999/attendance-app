@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@date-io/date-fns": "^2.17.0",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
-    "@mui/icons-material": "^6.2.1",
-    "@mui/material": "^6.4.11",
-    "@mui/x-data-grid": "^7.29.0",
+    "@mui/icons-material": "^5.17.1",
+    "@mui/material": "^5.17.1",
+    "@mui/x-data-grid": "^5.17.1",
+    "@mui/x-date-pickers": "^5.0.13",
     "date-fns": "^2.30.0",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
@@ -16,8 +18,8 @@
     "jspdf-autotable": "^3.8.4",
     "lodash": "^4.17.21",
     "notistack": "^3.0.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
     "react-query": "^3.39.3",
     "react-router-dom": "^7.0.2",
     "react-scripts": "5.0.1",
@@ -28,7 +30,15 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build"
+    "build": "react-scripts build",
+    "test": "react-scripts test --env=jsdom",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
   },
   "browserslist": {
     "production": [
@@ -41,5 +51,9 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "ajv": "^6.12.6",
+    "ajv-keywords": "^3.5.2"
   }
 }
