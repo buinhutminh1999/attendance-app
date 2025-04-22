@@ -1,27 +1,30 @@
 // src/pages/Home.js
 import React, { useState, useEffect, useCallback } from "react";
-import { Box, Typography, TextField, Button } from "@mui/material";
-
-// Thêm 2 import sau để dùng DatePicker
+import {
+  Box,
+  Button,
+  TextField,
+  CircularProgress,
+} from "@mui/material";
 import { LocalizationProvider, DatePicker } from "@mui/x-date-pickers";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 
 import FileUpload from "../components/FileUpload";
-import MonthFilter from "../components/MonthFilter";
 import DepartmentFilter from "../components/DepartmentFilter";
 import FilterToolbar from "../components/FilterToolbar";
-import PrintButton from "../components/PrintButton";
 import AttendanceTable from "../components/AttendanceTable";
+
 import {
   convertExcelDateToJSDate,
   convertExcelTimeToTimeString,
 } from "../utils/dateUtils";
 import { printStyledAttendance } from "../utils/printUtils";
+
 import { collection, getDocs, setDoc, doc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useSnackbar } from "notistack";
 
-// Chuyển Firestore Timestamp hoặc Date → "dd/MM/yyyy"
+// format Firestore Timestamp hoặc JS-Date → "dd/MM/yyyy"
 const toDateString = (val) => {
   if (typeof val === "string") return val;
   const d = val.toDate ? val.toDate() : val;
@@ -31,204 +34,191 @@ const toDateString = (val) => {
   return `${dd}/${mm}/${yyyy}`;
 };
 
-// Lấy key tháng "MM/YYYY"
-const getMonthKey = (dateStr) => dateStr.slice(3);
+// parse "dd/MM/yyyy" → JS-Date (giờ 0h)
+const parseDMY = (s) => {
+  const [dd, mm, yyyy] = s.split("/").map(Number);
+  return new Date(yyyy, mm - 1, dd);
+};
 
 export default function Home() {
-  const [rows, setRows] = useState([]);         // tất cả bản ghi
-  const [filtered, setFiltered] = useState([]); // sau khi filter
-  const [months, setMonths] = useState([]);     // dropdown tháng
-  const [depts, setDepts] = useState([]);       // dropdown bộ phận
+  const [rows, setRows] = useState([]);       // toàn bộ dữ liệu
+  const [filtered, setFiltered] = useState([]); // dữ liệu hiển thị bảng
+  const [depts, setDepts] = useState([]);     // danh sách bộ phận
+  const [dept, setDept] = useState("all");    // bộ phận đang chọn
 
-  // state cho date-picker “Từ ngày” / “Đến ngày”
   const [fromDate, setFromDate] = useState(null);
-  const [toDate, setToDate]     = useState(null);
+  const [toDate, setToDate] = useState(null);
 
-  const [month, setMonth] = useState("all");
-  const [dept, setDept]   = useState("all");
   const { enqueueSnackbar } = useSnackbar();
 
-  // 1) Load dữ liệu attendance + lý do từ Firestore
+  // 1) Load attendance + lý do
   useEffect(() => {
     (async () => {
       try {
-        const attSnap  = await getDocs(collection(db, "attendance"));
+        const attSnap = await getDocs(collection(db, "attendance"));
         const lateSnap = await getDocs(collection(db, "lateReasons"));
-        const lateMap  = {};
-        lateSnap.forEach((d) => { lateMap[d.id] = d.data(); });
+        const lateMap = {};
+        lateSnap.forEach((d) => (lateMap[d.id] = d.data()));
 
         const all = attSnap.docs.map((d) => {
-          const data    = d.data();
+          const data = d.data();
           const dateStr = toDateString(data.Ngày);
           return {
             id: d.id,
             ...data,
             Ngày: dateStr,
-            monthKey: getMonthKey(dateStr),
-            morning:   lateMap[d.id]?.morning   || "",
-            afternoon: lateMap[d.id]?.afternoon || "",
             S1: data.S1 || "",
             S2: data.S2 || "",
             C1: data.C1 || "",
             C2: data.C2 || "",
+            morning: lateMap[d.id]?.morning || "",
+            afternoon: lateMap[d.id]?.afternoon || "",
           };
         });
-
         setRows(all);
-        setMonths(Array.from(new Set(all.map((r) => r.monthKey))));
         setDepts(Array.from(new Set(all.map((r) => r["Tên bộ phận"]))));
-      } catch (err) {
+      } catch {
         enqueueSnackbar("Lỗi khi tải dữ liệu", { variant: "error" });
       }
     })();
   }, [enqueueSnackbar]);
 
-  // 2) Filter khi rows / month / dept / lịch thay đổi
+  // 2) Lọc khi rows / dept / fromDate / toDate thay đổi
   useEffect(() => {
     let tmp = rows;
 
-    // lọc theo tháng dropdown
-    if (month !== "all") {
-      tmp = tmp.filter((r) => r.monthKey === month);
-    }
-
-    // lọc theo phòng ban dropdown
+    // lọc theo phòng ban
     if (dept !== "all") {
       tmp = tmp.filter((r) => r["Tên bộ phận"] === dept);
     }
-
-    // nếu đã chọn from/to:
-    if (fromDate) {
-      const fromStr = toDateString(fromDate);
-      tmp = tmp.filter((r) => r.Ngày >= fromStr);
-    }
-    if (toDate) {
-      const toStr = toDateString(toDate);
-      tmp = tmp.filter((r) => r.Ngày <= toStr);
+    // lọc theo khoảng ngày
+    if (fromDate && toDate) {
+      const start = new Date(fromDate);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(toDate);
+      end.setHours(23, 59, 59, 999);
+      tmp = tmp.filter((r) => {
+        const d = parseDMY(r.Ngày);
+        return d >= start && d <= end;
+      });
     }
 
     setFiltered(tmp);
-  }, [rows, month, dept, fromDate, toDate]);
+  }, [rows, dept, fromDate, toDate]);
 
-  // 3) Upload file mới, lưu attendance về Firestore
+  // 3) Upload & lưu Firestore
   const handleFileUpload = useCallback(
     async (rawRows) => {
       try {
         const formatted = rawRows.map((r) => {
-          const dateStr  = convertExcelDateToJSDate(r["Ngày"]);          // "dd/MM/yyyy"
-          const safeDate = dateStr.replace(/\//g, "-");                  // "dd-MM-yyyy"
+          const dateStr = convertExcelDateToJSDate(r["Ngày"]);
           return {
-            id: `${r["Tên nhân viên"]}_${safeDate}`,
+            id: `${r["Tên nhân viên"]}_${dateStr.replace(/\//g, "-")}`,
             "Tên nhân viên": r["Tên nhân viên"],
-            "Tên bộ phận":   r["Tên bộ phận"],
-            Ngày:            dateStr,
-            monthKey:        getMonthKey(dateStr),
+            "Tên bộ phận": r["Tên bộ phận"],
+            Ngày: dateStr,
             S1: convertExcelTimeToTimeString(r.S1),
             S2: convertExcelTimeToTimeString(r.S2),
             C1: convertExcelTimeToTimeString(r.C1),
             C2: convertExcelTimeToTimeString(r.C2),
-            morning:   "",
+            morning: "",
             afternoon: "",
           };
         });
-
-        // save lên Firestore
         await Promise.all(
           formatted.map((row) =>
             setDoc(doc(db, "attendance", row.id), row, { merge: true })
           )
         );
-        enqueueSnackbar("Tải & lưu cloud thành công", { variant: "success" });
-
-        // cập nhật state rows bao gồm cả cũ và mới
-        setRows((prev) => {
-          // giữ nguyên prev không thuộc tháng mới, rồi thêm formatted
-          const other = prev.filter((r) => r.monthKey !== formatted[0].monthKey);
-          return [...other, ...formatted];
+        enqueueSnackbar("Tải & lưu cloud thành công", {
+          variant: "success",
         });
-      } catch (err) {
+        setRows((prev) => {
+          const others = prev.filter(
+            (r) => !formatted.some((f) => f.id === r.id)
+          );
+          return [...others, ...formatted];
+        });
+      } catch {
         enqueueSnackbar("Lỗi khi tải file", { variant: "error" });
       }
     },
     [enqueueSnackbar]
   );
 
-  // 4) In bảng chấm công (theo filter hiện tại)
+  // 4) In bảng đang hiển thị
   const handlePrint = () => {
-    if (!filtered.length) {
-      enqueueSnackbar("Chưa có dữ liệu để in", { variant: "warning" });
+    if (!fromDate || !toDate) {
+      enqueueSnackbar("Chọn đủ Từ ngày và Đến ngày để in", {
+        variant: "warning",
+      });
       return;
     }
-    printStyledAttendance(
-      filtered,
-      dept === "all" ? "Tất cả" : dept
-    );
+    printStyledAttendance(filtered, dept === "all" ? "Tất cả" : dept, fromDate, toDate);
   };
+
+  // nếu chưa load xong data
+  if (!rows.length) {
+    return <CircularProgress sx={{ display: "block", mx: "auto", my: 4 }} />;
+  }
 
   return (
     <>
-      {/* Upload Excel */}
-      <FileUpload onFileUpload={handleFileUpload} />
+      <Box mb={2}>
+        <FileUpload onFileUpload={handleFileUpload} />
+      </Box>
 
-      {/* Bộ lọc: Tháng và phòng ban */}
       <Box display="flex" flexWrap="wrap" gap={2} mb={2}>
-        <MonthFilter
-          months={months}
-          value={month}
-          onChange={setMonth}
-          labels={{ all: "Tất cả" }}
-        />
         <DepartmentFilter
           depts={depts}
           value={dept}
           onChange={setDept}
           labels={{ all: "Tất cả" }}
         />
-      </Box>
-
-      {/* Thanh tìm kiếm */}
-      <FilterToolbar
-        onSearchChange={(kw) => {
-          const k = kw.toLowerCase();
-          if (!k) {
-            setFiltered(rows);
-          } else {
-            setFiltered(
-              rows.filter((r) =>
-                Object.values(r).some(
-                  (v) => v && v.toString().toLowerCase().includes(k)
-                )
-              )
-            );
-          }
-        }}
-      />
-
-      {/* Chọn khoảng in theo lịch */}
-      <LocalizationProvider dateAdapter={AdapterDateFns}>
-        <Box display="flex" gap={2} alignItems="center" mb={2}>
+        <LocalizationProvider dateAdapter={AdapterDateFns}>
           <DatePicker
             label="Từ ngày"
             value={fromDate}
-            onChange={setFromDate}
-            renderInput={(params) => <TextField {...params} size="small" />}
+            onChange={(d) => setFromDate(d)}
+            renderInput={(params) => (
+              <TextField size="small" {...params} />
+            )}
           />
           <DatePicker
             label="Đến ngày"
             value={toDate}
-            onChange={setToDate}
-            renderInput={(params) => <TextField {...params} size="small" />}
+            onChange={(d) => setToDate(d)}
+            renderInput={(params) => (
+              <TextField size="small" {...params} />
+            )}
           />
-          <Button variant="contained" color="secondary" onClick={handlePrint}>
-            IN THEO LỊCH
-          </Button>
-        </Box>
-      </LocalizationProvider>
+        </LocalizationProvider>
+      </Box>
 
-      {/* Nút in toàn bộ (theo filter tháng/phòng ban nếu chưa chọn lịch) */}
-      <PrintButton onPrint={handlePrint} />
+      <Box mb={2}>
+        <FilterToolbar
+          onSearchChange={(kw) => {
+            const k = kw.toLowerCase();
+            if (!k) return setFiltered(rows);
+            setFiltered(
+              rows.filter((r) =>
+                Object.values(r).some(
+                  (v) =>
+                    v &&
+                    v.toString().toLowerCase().includes(k)
+                )
+              )
+            );
+          }}
+        />
+      </Box>
 
-      {/* Bảng chấm công */}
+      <Box mb={2}>
+        <Button variant="contained" onClick={handlePrint}>
+          IN BẢNG CHẤM CÔNG
+        </Button>
+      </Box>
+
       <AttendanceTable rows={filtered} onReasonSave={() => {}} />
     </>
   );
