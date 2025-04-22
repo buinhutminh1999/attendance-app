@@ -1,15 +1,14 @@
 // src/pages/Home.js
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Box,
   Button,
   TextField,
   CircularProgress,
-  Stack,
-  Grid,
 } from "@mui/material";
 import { LocalizationProvider, DatePicker } from "@mui/x-date-pickers";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { startOfDay, endOfDay } from "date-fns";
 
 import FileUpload from "../components/FileUpload";
 import DepartmentFilter from "../components/DepartmentFilter";
@@ -26,7 +25,7 @@ import { collection, getDocs, setDoc, doc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useSnackbar } from "notistack";
 
-// helper: Firestore Timestamp | Date → "dd/MM/yyyy"
+// format Firestore Timestamp hoặc JS-Date → "dd/MM/yyyy"
 const toDateString = (val) => {
   if (typeof val === "string") return val;
   const d = val.toDate ? val.toDate() : val;
@@ -36,70 +35,78 @@ const toDateString = (val) => {
   return `${dd}/${mm}/${yyyy}`;
 };
 
-// parse "dd/MM/yyyy" → Date
+// parse "dd/MM/yyyy" → JS-Date (giờ 0h)
 const parseDMY = (s) => {
   const [dd, mm, yyyy] = s.split("/").map(Number);
   return new Date(yyyy, mm - 1, dd);
 };
 
 export default function Home() {
+  const [rows, setRows] = useState([]);        // toàn bộ bản ghi
+  const [filtered, setFiltered] = useState([]);// bản ghi đang hiển thị
+  const [depts, setDepts] = useState([]);      // danh sách phòng ban
+  const [dept, setDept] = useState("all");     // phòng ban đang chọn
+
+  const [fromDate, setFromDate] = useState(null);
+  const [toDate, setToDate]     = useState(null);
+
   const { enqueueSnackbar } = useSnackbar();
 
-  const [rows, setRows] = useState([]);
-  const [depts, setDepts] = useState([]);
-  const [dept, setDept] = useState("all");
-  const [fromDate, setFromDate] = useState(null);
-  const [toDate, setToDate] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // 1) Load attendance + lý do
+  // 1) Load attendance + lateReasons
   useEffect(() => {
     (async () => {
       try {
-        const attSnap = await getDocs(collection(db, "attendance"));
+        const attSnap  = await getDocs(collection(db, "attendance"));
         const lateSnap = await getDocs(collection(db, "lateReasons"));
-        const lateMap = {};
+        const lateMap  = {};
         lateSnap.forEach((d) => (lateMap[d.id] = d.data()));
 
         const all = attSnap.docs.map((d) => {
-          const data = d.data();
+          const data    = d.data();
           const dateStr = toDateString(data.Ngày);
+          const dateObj = parseDMY(dateStr);
           return {
             id: d.id,
             ...data,
             Ngày: dateStr,
+            dateObj,            // <-- thêm
             S1: data.S1 || "",
             S2: data.S2 || "",
             C1: data.C1 || "",
             C2: data.C2 || "",
-            morning: lateMap[d.id]?.morning || "",
-            afternoon: lateMap[d.id]?.afternoon || "",
+            morning:  lateMap[d.id]?.morning || "",
+            afternoon:lateMap[d.id]?.afternoon|| "",
           };
         });
+
         setRows(all);
         setDepts(Array.from(new Set(all.map((r) => r["Tên bộ phận"]))));
-      } catch (err) {
-        console.error(err);
+      } catch {
         enqueueSnackbar("Lỗi khi tải dữ liệu", { variant: "error" });
-      } finally {
-        setLoading(false);
       }
     })();
   }, [enqueueSnackbar]);
 
-  // 2) Compute filtered via useMemo
-  const filtered = useMemo(() => {
-    return rows
-      .filter((r) => (dept === "all" ? true : r["Tên bộ phận"] === dept))
-      .filter((r) => {
-        if (!fromDate || !toDate) return true;
-        const d = parseDMY(r.Ngày);
-        d.setHours(12, 0, 0); // normalize midday
-        return d >= fromDate && d <= toDate;
-      });
+  // 2) Lọc khi rows / dept / fromDate / toDate thay đổi
+  useEffect(() => {
+    let tmp = rows;
+
+    // theo phòng ban
+    if (dept !== "all") {
+      tmp = tmp.filter((r) => r["Tên bộ phận"] === dept);
+    }
+
+    // theo ngày (bao gồm cả thứ 7)
+    if (fromDate && toDate) {
+      const start = startOfDay(fromDate);
+      const end   = endOfDay(toDate);
+      tmp = tmp.filter((r) => r.dateObj >= start && r.dateObj <= end);
+    }
+
+    setFiltered(tmp);
   }, [rows, dept, fromDate, toDate]);
 
-  // 3) Upload & save Firestore
+  // 3) Upload & lưu Firestore
   const handleFileUpload = useCallback(
     async (rawRows) => {
       try {
@@ -108,14 +115,15 @@ export default function Home() {
           return {
             id: `${r["Tên nhân viên"]}_${dateStr.replace(/\//g, "-")}`,
             "Tên nhân viên": r["Tên nhân viên"],
-            "Tên bộ phận": r["Tên bộ phận"],
-            Ngày: dateStr,
+            "Tên bộ phận":   r["Tên bộ phận"],
+            Ngày:            dateStr,
+            dateObj:         parseDMY(dateStr),  // <-- thêm
             S1: convertExcelTimeToTimeString(r.S1),
             S2: convertExcelTimeToTimeString(r.S2),
             C1: convertExcelTimeToTimeString(r.C1),
             C2: convertExcelTimeToTimeString(r.C2),
-            morning: "",
-            afternoon: "",
+            morning:  "",
+            afternoon:"",
           };
         });
         await Promise.all(
@@ -123,33 +131,22 @@ export default function Home() {
             setDoc(doc(db, "attendance", row.id), row, { merge: true })
           )
         );
-        enqueueSnackbar("Tải & lưu cloud thành công", {
-          variant: "success",
-        });
+        enqueueSnackbar("Tải & lưu cloud thành công", { variant: "success" });
         setRows((prev) => {
-          // merge old + new, replace by id
-          const map = Object.fromEntries(prev.map((r) => [r.id, r]));
-          formatted.forEach((f) => (map[f.id] = f));
-          return Object.values(map);
+          const others = prev.filter((r) => !formatted.some((f) => f.id === r.id));
+          return [...others, ...formatted];
         });
-      } catch (err) {
-        console.error(err);
+      } catch {
         enqueueSnackbar("Lỗi khi tải file", { variant: "error" });
       }
     },
     [enqueueSnackbar]
   );
 
-  // 4) Print
+  // 4) In bảng đang hiển thị
   const handlePrint = () => {
     if (!fromDate || !toDate) {
-      enqueueSnackbar("Chọn đủ Từ ngày và Đến ngày để in", {
-        variant: "warning",
-      });
-      return;
-    }
-    if (!filtered.length) {
-      enqueueSnackbar("Không có dữ liệu để in", { variant: "warning" });
+      enqueueSnackbar("Chọn đủ Từ ngày và Đến ngày để in", { variant: "warning" });
       return;
     }
     printStyledAttendance(
@@ -160,74 +157,60 @@ export default function Home() {
     );
   };
 
-  // 5) Clear filters
-  const handleClear = () => {
-    setDept("all");
-    setFromDate(null);
-    setToDate(null);
-  };
-
-  if (loading) {
+  if (!rows.length) {
     return <CircularProgress sx={{ display: "block", mx: "auto", my: 4 }} />;
   }
 
   return (
-    <Stack spacing={2}>
-      <FileUpload onFileUpload={handleFileUpload} />
+    <>
+      <Box mb={2}><FileUpload onFileUpload={handleFileUpload} /></Box>
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm="auto">
-          <DepartmentFilter
-            depts={depts}
-            value={dept}
-            onChange={setDept}
-            labels={{ all: "Tất cả" }}
+      <Box display="flex" flexWrap="wrap" gap={2} mb={2}>
+        <DepartmentFilter
+          depts={depts}
+          value={dept}
+          onChange={setDept}
+          labels={{ all: "Tất cả" }}
+        />
+        <LocalizationProvider dateAdapter={AdapterDateFns}>
+          <DatePicker
+            label="Từ ngày"
+            value={fromDate}
+            onChange={setFromDate}
+            renderInput={(params) => <TextField size="small" {...params} />}
           />
-        </Grid>
-        <Grid item xs={12} sm="auto">
-          <LocalizationProvider dateAdapter={AdapterDateFns}>
-            <Stack direction="row" spacing={1}>
-              <DatePicker
-                label="Từ ngày"
-                value={fromDate}
-                onChange={setFromDate}
-                renderInput={(params) => <TextField size="small" {...params} />}
-              />
-              <DatePicker
-                label="Đến ngày"
-                value={toDate}
-                onChange={setToDate}
-                renderInput={(params) => <TextField size="small" {...params} />}
-              />
-            </Stack>
-          </LocalizationProvider>
-        </Grid>
-        <Grid item xs={12} sm="auto">
-          <Button variant="outlined" onClick={handleClear}>
-            Xóa bộ lọc
-          </Button>
-        </Grid>
-      </Grid>
+          <DatePicker
+            label="Đến ngày"
+            value={toDate}
+            onChange={setToDate}
+            renderInput={(params) => <TextField size="small" {...params} />}
+          />
+        </LocalizationProvider>
+      </Box>
 
-      <FilterToolbar
-        onSearchChange={(kw) => {
-          // thư riêng hoặc có thể gộp vào useMemo
-          const k = kw.toLowerCase();
-          if (!k) return;
-          // filter in place
-          // (mình đang dùng useMemo, nên bạn có thể đưa tìm kiếm vào đó nếu muốn)
-        }}
-      />
+      <Box mb={2}>
+        <FilterToolbar
+          onSearchChange={(kw) => {
+            const k = kw.trim().toLowerCase();
+            if (!k) return setFiltered(rows);
+            setFiltered(
+              rows.filter((r) =>
+                Object.values(r).some((v) =>
+                  v?.toString().toLowerCase().includes(k)
+                )
+              )
+            );
+          }}
+        />
+      </Box>
 
-      <Button
-        variant="contained"
-        onClick={handlePrint}
-        disabled={!fromDate || !toDate || !filtered.length}
-      >
-        IN BẢNG CHẤM CÔNG
-      </Button>
+      <Box mb={2}>
+        <Button fullWidth variant="contained" onClick={handlePrint}>
+          IN BẢNG CHẤM CÔNG
+        </Button>
+      </Box>
 
       <AttendanceTable rows={filtered} onReasonSave={() => {}} />
-    </Stack>
+    </>
   );
 }
