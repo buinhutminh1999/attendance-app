@@ -1,15 +1,28 @@
-// src/utils/printUtils.js
-
 import { isLate, isEarly, isTimeString } from "./timeUtils";
 
 const WEEKDAYS = ["Chủ Nhật", "Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy"];
+
+// Chuyển 'dd/MM/yyyy' → JS Date
+function parseDateString(str) {
+  const [dd, mm, yyyy] = str.split("/").map(Number);
+  return new Date(yyyy, mm - 1, dd);
+}
+
+// Chuyển 'HH:mm' → phút
+function toMinutes(timeStr) {
+  const [h, m] = timeStr.split(":").map(Number);
+  return h * 60 + m;
+}
 
 /**
  * In bảng chấm công với style.
  * @param {Array} rowsToPrint – mảng các bản ghi đã filter
  * @param {string} dept – tên bộ phận đang in
+ * @param {Date} fromDate – ngày bắt đầu
+ * @param {Date} toDate – ngày kết thúc
+ * @param {boolean} includeSaturday – nếu true thì vẫn in giờ chiều Thứ 7
  */
-export function printStyledAttendance(rowsToPrint, dept) {
+export function printStyledAttendance(rowsToPrint, dept, fromDate, toDate, includeSaturday = false) {
   if (!rowsToPrint.length) return;
 
   const firstDate = rowsToPrint[0].Ngày;
@@ -20,10 +33,10 @@ export function printStyledAttendance(rowsToPrint, dept) {
     <style>
       @page { size: A4 landscape; margin: 20px; }
       body { font-family: "Times New Roman", serif; }
-      h1 { 
-        text-align: center; 
-        margin-bottom: 16px; 
-        font-size: 24px;        /* tăng kích thước tiêu đề */
+      h1 {
+        text-align: center;
+        margin-bottom: 16px;
+        font-size: 24px;
         font-weight: bold;
       }
       table { width: 100%; border-collapse: collapse; }
@@ -34,76 +47,64 @@ export function printStyledAttendance(rowsToPrint, dept) {
         font-size: 12px;
       }
       th { background: #f2f2f2; }
-      .late { background: #FFCCCC; } /* highlight ô trễ/đến sớm */
-      .no-data { color: #999; }     /* dấu “—” thứ Bảy */
-      .signature {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 40px;
-      }
-      .signature div {
-        width: 40%;
-        text-align: center;
-      }
-      .signature p {
-        font-weight: bold;
-        margin-bottom: 60px;
-      }
-      .note {
-        font-size: 12px;
-        margin-top: 10px;
-      }
+      .late { background: #FFCCCC; }
+      .signature { display: flex; justify-content: space-between; margin-top: 40px; }
+      .signature div { width: 40%; text-align: center; }
+      .signature p { font-weight: bold; margin-bottom: 60px; }
+      .note { font-size: 12px; margin-top: 10px; }
     </style>
   `;
 
-  const rowsHtml = rowsToPrint.map((r, i) => {
-    const [dd, mm, yyyy] = r.Ngày.split("/").map(Number);
-    const d = new Date(yyyy, mm - 1, dd);
-    const weekday = WEEKDAYS[d.getDay()];
-    const isSat = d.getDay() === 6;
+  const rowsHtml = rowsToPrint
+    .map((r, i) => {
+      const dateObj = parseDateString(r.Ngày);
+      const weekday = WEEKDAYS[dateObj.getDay()];
+      const isSat = dateObj.getDay() === 6;
+      const hideSat = isSat && !includeSaturday;
 
-    const s1 = r.S1 || "";
-    const s2 = r.S2 || "";
-    const c1 = r.C1 || "";
-    const c2 = r.C2 || "";
-    const m = (r.morning || "").trim();
-    const a = (r.afternoon || "").trim();
+      // Gom giờ và sort
+      const allTimes = [r.S1, r.S2, r.C1, r.C2]
+        .filter(isTimeString)
+        .sort((a, b) => toMinutes(a) - toMinutes(b));
+      const afternoonTimes = allTimes.filter(t => toMinutes(t) >= 12 * 60);
 
-    return `
-      <tr>
-        <td>${i + 1}</td>
-        <td>${r["Tên nhân viên"]}</td>
-        <td>${r.Ngày}</td>
-        <td>${weekday}</td>
+      // S2
+      const S2calc = hideSat
+        ? (allTimes.length ? allTimes[allTimes.length - 1] : '❌')
+        : (r.S2 || '❌');
 
-        <!-- S1: highlight nếu sau 07:15 -->
-        <td class="${isTimeString(s1) && isLate(s1, 7*60+15) ? "late" : ""}">
-          ${s1 || "❌"}
-        </td>
+      // C1, C2: nếu hideSat thì show '—'
+      const C1calc = hideSat
+        ? '—'
+        : (afternoonTimes[0] || (includeSaturday ? '❌' : '—'));
+      const C2calc = hideSat
+        ? '—'
+        : (afternoonTimes.length
+            ? afternoonTimes[afternoonTimes.length - 1]
+            : (includeSaturday ? '❌' : '—')
+          );
 
-        <!-- S2: highlight nếu trước 11:15 -->
-        <td class="${isTimeString(s2) && isEarly(s2, 11*60+15) ? "late" : ""}">
-          ${s2 || "❌"}
-        </td>
+      const mReason = (r.morning || '').trim();
+      const aReason = (r.afternoon || '').trim();
 
-        <!-- Lý do Sáng -->
-        <td>${m}</td>
+      return `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${r['Tên nhân viên']}</td>
+          <td>${r.Ngày}</td>
+          <td>${weekday}</td>
 
-        <!-- C1: thứ Bảy luôn hiện “—” -->
-        <td class="${!isSat && isTimeString(c1) && isLate(c1, 13*60) ? "late" : ""}">
-          ${isSat ? "—" : (c1 || "❌")}
-        </td>
+          <td class="${isTimeString(r.S1) && isLate(r.S1, 7*60+15) ? 'late' : ''}">${r.S1 || '❌'}</td>
+          <td class="${isTimeString(S2calc) && isEarly(S2calc, 11*60+15) ? 'late' : ''}">${S2calc}</td>
+          <td>${mReason}</td>
 
-        <!-- C2: thứ Bảy luôn hiện “—” -->
-        <td class="${!isSat && isTimeString(c2) && isEarly(c2, 17*60) ? "late" : ""}">
-          ${isSat ? "—" : (c2 || "❌")}
-        </td>
-
-        <!-- Lý do Chiều -->
-        <td>${isSat ? "—" : a}</td>
-      </tr>
-    `;
-  }).join("");
+          <td class="${!hideSat && isTimeString(C1calc) && isLate(C1calc, 13*60) ? 'late' : ''}">${C1calc}</td>
+          <td class="${!hideSat && isTimeString(C2calc) && isEarly(C2calc, 17*60) ? 'late' : ''}">${C2calc}</td>
+          <td>${hideSat ? '—' : aReason}</td>
+        </tr>
+      `;
+    })
+    .join('');
 
   const html = `
     <html>
@@ -116,27 +117,16 @@ export function printStyledAttendance(rowsToPrint, dept) {
         <table>
           <thead>
             <tr>
-              <th>STT</th>
-              <th>Tên nhân viên</th>
-              <th>Ngày</th>
-              <th>Thứ</th>
-              <th>S1</th>
-              <th>S2</th>
-              <th>Lý do trễ (Sáng)</th>
-              <th>C1</th>
-              <th>C2</th>
-              <th>Lý do trễ (Chiều)</th>
+              <th>STT</th><th>Tên nhân viên</th><th>Ngày</th><th>Thứ</th>
+              <th>S1</th><th>S2</th><th>Lý do trễ (Sáng)</th>
+              <th>C1</th><th>C2</th><th>Lý do trễ (Chiều)</th>
             </tr>
           </thead>
           <tbody>
             ${rowsHtml}
           </tbody>
         </table>
-        <p class="note">
-          <strong>Ghi chú:</strong>
-          ❌: Chưa ghi nhận dữ liệu chấm công | 
-          S1, S2: Chấm công sáng | C1, C2: Chấm công chiều.
-        </p>
+        <p class="note"><strong>Ghi chú:</strong> ❌: chưa chấm công | S1/S2 sáng | C1/C2 chiều</p>
         <div class="signature">
           <div><p>Xác nhận lãnh đạo</p></div>
           <div><p>Người lập</p></div>
@@ -145,7 +135,7 @@ export function printStyledAttendance(rowsToPrint, dept) {
     </html>
   `;
 
-  const win = window.open("", "_blank");
+  const win = window.open('', '_blank');
   win.document.write(html);
   win.document.close();
   win.focus();

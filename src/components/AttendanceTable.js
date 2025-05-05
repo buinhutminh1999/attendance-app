@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  memo,
-  forwardRef,
-} from "react";
+import React, { useState, useEffect, useCallback, memo, forwardRef } from "react";
 import {
   Table,
   TableBody,
@@ -17,25 +11,27 @@ import {
   CircularProgress,
   useTheme,
   useMediaQuery,
+  Box,
 } from "@mui/material";
 import { collection, getDocs, doc, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useSnackbar } from "notistack";
-import {
-  isTimeString,
-  isLate,
-  isEarly,
-} from "../utils/timeUtils";
+import { isTimeString, isLate, isEarly } from "../utils/timeUtils";
 
-// Tên collection lưu lý do
+// Collection chứa lý do trễ
 const LATE_COLLECTION = "lateReasons";
-// Thứ trong tuần
+// Tên các ngày trong tuần
 const WEEKDAY = ["Chủ Nhật", "Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy"];
 
-// parse "dd/MM/yyyy" → JS Date
+// Chuyển "dd/MM/yyyy" thành JS Date
 const parseDate = (s) => {
   const [dd, mm, yyyy] = s.split("/").map(Number);
   return new Date(yyyy, mm - 1, dd);
+};
+// Chuyển "HH:mm" thành phút
+const toMinutes = (t) => {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
 };
 
 /**
@@ -45,6 +41,7 @@ const AttendanceRow = memo(
   function AttendanceRow({
     idx,
     row,
+    includeSaturday,
     reason,
     editing,
     onStartEdit,
@@ -53,24 +50,46 @@ const AttendanceRow = memo(
     const dateObj = parseDate(row.Ngày);
     const weekday = WEEKDAY[dateObj.getDay()];
     const isSaturday = dateObj.getDay() === 6;
+    const hideSat = isSaturday && !includeSaturday;
 
-    // render ô lý do editable
+    // Gom S1,S2,C1,C2, lọc chuỗi giờ, sort tăng dần
+    const allTimes = [row.S1, row.S2, row.C1, row.C2]
+      .filter(isTimeString)
+      .sort((a, b) => toMinutes(a) - toMinutes(b));
+
+    // Buổi chiều (>=12:00)
+    const afternoonTimes = allTimes.filter((t) => toMinutes(t) >= 12 * 60);
+
+    // C1 = đầu buổi chiều, C2 = cuối buổi chiều
+    const C1calc = hideSat
+      ? "—"
+      : (afternoonTimes[0] || (includeSaturday ? "❌" : "—"));
+    const C2calc = hideSat
+      ? "—"
+      : (afternoonTimes.length
+          ? afternoonTimes[afternoonTimes.length - 1]
+          : (includeSaturday ? "❌" : "—")
+        );
+
+    // S2: với hideSat, lấy cuối cùng hoặc ❌, các ngày thường sử dụng row.S2 hoặc ❌
+    const S2calc = hideSat
+      ? (allTimes.length ? allTimes[allTimes.length - 1] : "❌")
+      : (row.S2 || "❌");
+
+    // Render ô lý do editable hoặc hiển thị logic
     const renderReasonCell = (field) => {
+      if (field === "afternoon" && hideSat) {
+        return <TableCell>—</TableCell>;
+      }
       const isActive =
         editing?.rowId === row.id && editing.field === field;
       return (
         <TableCell
           sx={{
-            cursor:
-              field === "afternoon" && isSaturday
-                ? "default"
-                : "pointer",
+            cursor: "pointer",
             backgroundColor: isActive ? "#eef" : "inherit",
           }}
-          onDoubleClick={() => {
-            if (field === "afternoon" && isSaturday) return;
-            onStartEdit(row.id, field, reason[field] || "");
-          }}
+          onDoubleClick={() => onStartEdit(row.id, field, reason[field] || "")}
         >
           {isActive ? (
             <TextField
@@ -79,18 +98,18 @@ const AttendanceRow = memo(
               fullWidth
               defaultValue={editing.value}
               onBlur={(e) => onSave(e.target.value)}
-              onKeyDown={(e) =>
-                e.key === "Enter" && e.currentTarget.blur()
-              }
+              onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             />
           ) : (
-            reason[field] || ""
+            field === "afternoon"
+              ? (hideSat ? "—" : (reason.afternoon || ""))
+              : (reason.morning || "")
           )}
         </TableCell>
       );
     };
 
-    // helper highlight
+    // Helper highlight
     const cellSx = (timeStr, checkFn, threshold) => ({
       backgroundColor:
         isTimeString(timeStr) && checkFn(timeStr, threshold)
@@ -106,53 +125,31 @@ const AttendanceRow = memo(
         <TableCell>{row.Ngày}</TableCell>
         <TableCell>{weekday}</TableCell>
 
-        {/* S1: highlight nếu sau 07:15 */}
-        <TableCell
-          sx={cellSx(row.S1, isLate, 7 * 60 + 15)}
-        >
-          {row.S1}
+        {/* S1 */}
+        <TableCell sx={cellSx(row.S1, isLate, 7 * 60 + 15)}>
+          {row.S1 || "❌"}
         </TableCell>
 
-        {/* S2: highlight nếu trước 11:15 */}
-        <TableCell
-          sx={cellSx(row.S2, isEarly, 11 * 60 + 15)}
-        >
-          {row.S2}
+        {/* S2 */}
+        <TableCell sx={cellSx(S2calc, isEarly, 11 * 60 + 15)}>
+          {S2calc}
         </TableCell>
 
         {/* Lý do trễ (Sáng) */}
         {renderReasonCell("morning")}
 
-        {/* C1: thứ 7 hiện —, khác thì highlight nếu sau 13:00 */}
-        <TableCell
-          sx={
-            isSaturday
-              ? {}
-              : cellSx(row.C1, isLate, 13 * 60)
-          }
-        >
-          {isSaturday ? "—" : row.C1}
+        {/* C1 */}
+        <TableCell sx={hideSat ? {} : cellSx(C1calc, isLate, 13 * 60)}>
+          {C1calc}
         </TableCell>
 
-        {/* C2: thứ 7 hiện —, khác thì highlight nếu trước 17:00 */}
-        <TableCell
-          sx={
-            isSaturday
-              ? {}
-              : cellSx(row.C2, isEarly, 17 * 60)
-          }
-        >
-          {isSaturday ? "—" : row.C2}
+        {/* C2 */}
+        <TableCell sx={hideSat ? {} : cellSx(C2calc, isEarly, 17 * 60)}>
+          {C2calc}
         </TableCell>
 
-        {/* Lý do trễ (Chiều), thứ 7 không cho sửa */}
-        {isSaturday ? (
-          <TableCell >
-            —
-          </TableCell>
-        ) : (
-          renderReasonCell("afternoon")
-        )}
+        {/* Lý do trễ (Chiều) */}
+        {renderReasonCell("afternoon")}
       </TableRow>
     );
   },
@@ -167,16 +164,12 @@ const AttendanceRow = memo(
  * Component chính
  */
 export default forwardRef(function AttendanceTable(
-  { rows = [], onReasonSave },
+  { rows = [], includeSaturday = false, onReasonSave },
   ref
 ) {
   const [reasons, setReasons] = useState({});
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState({
-    rowId: null,
-    field: null,
-    value: "",
-  });
+  const [editing, setEditing] = useState({ rowId: null, field: null, value: "" });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { enqueueSnackbar } = useSnackbar();
@@ -187,14 +180,10 @@ export default forwardRef(function AttendanceTable(
       try {
         const snap = await getDocs(collection(db, LATE_COLLECTION));
         const map = {};
-        snap.forEach((d) => {
-          map[d.id] = d.data();
-        });
+        snap.forEach((d) => (map[d.id] = d.data()));
         setReasons(map);
       } catch {
-        enqueueSnackbar("Lỗi khi tải lý do", {
-          variant: "error",
-        });
+        enqueueSnackbar("Lỗi khi tải lý do", { variant: "error" });
       } finally {
         setLoading(false);
       }
@@ -206,7 +195,6 @@ export default forwardRef(function AttendanceTable(
     async (newVal) => {
       const { rowId, field } = editing;
       if (!rowId || !field) return;
-      // Cập nhật local
       setReasons((prev) => ({
         ...prev,
         [rowId]: { ...prev[rowId], [field]: newVal },
@@ -219,13 +207,9 @@ export default forwardRef(function AttendanceTable(
           { [field]: newVal },
           { merge: true }
         );
-        enqueueSnackbar("Lưu lý do thành công", {
-          variant: "success",
-        });
+        enqueueSnackbar("Lưu lý do thành công", { variant: "success" });
       } catch {
-        enqueueSnackbar("Lỗi khi lưu lý do", {
-          variant: "error",
-        });
+        enqueueSnackbar("Lỗi khi lưu lý do", { variant: "error" });
       }
     },
     [editing, enqueueSnackbar, onReasonSave]
@@ -233,9 +217,9 @@ export default forwardRef(function AttendanceTable(
 
   if (loading) {
     return (
-      <CircularProgress
-        sx={{ display: "block", mx: "auto", my: 4 }}
-      />
+      <Box sx={{ textAlign: "center", my: 4 }}>
+        <CircularProgress />
+      </Box>
     );
   }
 
@@ -263,10 +247,9 @@ export default forwardRef(function AttendanceTable(
               key={r.id}
               idx={i}
               row={r}
+              includeSaturday={includeSaturday}
               reason={reasons[r.id] || {}}
-              editing={
-                editing.rowId === r.id ? editing : null
-              }
+              editing={editing.rowId === r.id ? editing : null}
               onStartEdit={(rowId, field, val) =>
                 setEditing({ rowId, field, value: val })
               }

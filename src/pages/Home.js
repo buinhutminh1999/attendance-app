@@ -5,6 +5,8 @@ import {
   Button,
   TextField,
   CircularProgress,
+  Checkbox,
+  FormControlLabel,
 } from "@mui/material";
 import { LocalizationProvider, DatePicker } from "@mui/x-date-pickers";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
@@ -14,7 +16,6 @@ import FileUpload from "../components/FileUpload";
 import DepartmentFilter from "../components/DepartmentFilter";
 import FilterToolbar from "../components/FilterToolbar";
 import AttendanceTable from "../components/AttendanceTable";
-
 import {
   convertExcelDateToJSDate,
   convertExcelTimeToTimeString,
@@ -42,13 +43,16 @@ const parseDMY = (s) => {
 };
 
 export default function Home() {
-  const [rows, setRows] = useState([]);        // toàn bộ bản ghi
-  const [filtered, setFiltered] = useState([]);// bản ghi đang hiển thị
-  const [depts, setDepts] = useState([]);      // danh sách phòng ban
-  const [dept, setDept] = useState("all");     // phòng ban đang chọn
+  const [rows, setRows] = useState([]);
+  const [filtered, setFiltered] = useState([]);
+  const [depts, setDepts] = useState([]);
+  const [dept, setDept] = useState("all");
 
   const [fromDate, setFromDate] = useState(null);
   const [toDate, setToDate]     = useState(null);
+
+  // trạng thái in thêm Thứ 7
+  const [includeSaturday, setIncludeSaturday] = useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
 
@@ -69,7 +73,7 @@ export default function Home() {
             id: d.id,
             ...data,
             Ngày: dateStr,
-            dateObj,            // <-- thêm
+            dateObj,
             S1: data.S1 || "",
             S2: data.S2 || "",
             C1: data.C1 || "",
@@ -91,12 +95,10 @@ export default function Home() {
   useEffect(() => {
     let tmp = rows;
 
-    // theo phòng ban
     if (dept !== "all") {
       tmp = tmp.filter((r) => r["Tên bộ phận"] === dept);
     }
 
-    // theo ngày (bao gồm cả thứ 7)
     if (fromDate && toDate) {
       const start = startOfDay(fromDate);
       const end   = endOfDay(toDate);
@@ -117,7 +119,7 @@ export default function Home() {
             "Tên nhân viên": r["Tên nhân viên"],
             "Tên bộ phận":   r["Tên bộ phận"],
             Ngày:            dateStr,
-            dateObj:         parseDMY(dateStr),  // <-- thêm
+            dateObj:         parseDMY(dateStr),
             S1: convertExcelTimeToTimeString(r.S1),
             S2: convertExcelTimeToTimeString(r.S2),
             C1: convertExcelTimeToTimeString(r.C1),
@@ -153,7 +155,8 @@ export default function Home() {
       filtered,
       dept === "all" ? "Tất cả" : dept,
       fromDate,
-      toDate
+      toDate,
+      includeSaturday   // ← truyền flag vào đây
     );
   };
 
@@ -163,7 +166,9 @@ export default function Home() {
 
   return (
     <>
-      <Box mb={2}><FileUpload onFileUpload={handleFileUpload} /></Box>
+      <Box mb={2}>
+        <FileUpload onFileUpload={handleFileUpload} />
+      </Box>
 
       <Box display="flex" flexWrap="wrap" gap={2} mb={2}>
         <DepartmentFilter
@@ -204,13 +209,26 @@ export default function Home() {
         />
       </Box>
 
+      {/* Checkbox in thêm ngày Thứ 7 */}
+      <Box mb={2}>
+        <FormControlLabel
+          control={
+            <Checkbox
+              checked={includeSaturday}
+              onChange={(e) => setIncludeSaturday(e.target.checked)}
+            />
+          }
+          label="In thêm ngày Thứ 7"
+        />
+      </Box>
+
       <Box mb={2}>
         <Button fullWidth variant="contained" onClick={handlePrint}>
           IN BẢNG CHẤM CÔNG
         </Button>
       </Box>
 
-      <AttendanceTable rows={filtered} onReasonSave={() => {}} />
+      <AttendanceTable rows={filtered}  includeSaturday={includeSaturday} onReasonSave={() => {}} />
     </>
   );
 }
