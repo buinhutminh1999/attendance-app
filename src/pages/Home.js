@@ -26,7 +26,6 @@ import { collection, getDocs, setDoc, doc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useSnackbar } from "notistack";
 
-// format Firestore Timestamp hoặc JS-Date → "dd/MM/yyyy"
 const toDateString = (val) => {
   if (typeof val === "string") return val;
   const d = val.toDate ? val.toDate() : val;
@@ -35,8 +34,6 @@ const toDateString = (val) => {
   const yyyy = d.getFullYear();
   return `${dd}/${mm}/${yyyy}`;
 };
-
-// parse "dd/MM/yyyy" → JS-Date (giờ 0h)
 const parseDMY = (s) => {
   const [dd, mm, yyyy] = s.split("/").map(Number);
   return new Date(yyyy, mm - 1, dd);
@@ -49,24 +46,23 @@ export default function Home() {
   const [dept, setDept] = useState("all");
 
   const [fromDate, setFromDate] = useState(null);
-  const [toDate, setToDate]     = useState(null);
+  const [toDate, setToDate] = useState(null);
 
   // trạng thái in thêm Thứ 7
   const [includeSaturday, setIncludeSaturday] = useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
 
-  // 1) Load attendance + lateReasons
   useEffect(() => {
     (async () => {
       try {
-        const attSnap  = await getDocs(collection(db, "attendance"));
+        const attSnap = await getDocs(collection(db, "attendance"));
         const lateSnap = await getDocs(collection(db, "lateReasons"));
-        const lateMap  = {};
+        const lateMap = {};
         lateSnap.forEach((d) => (lateMap[d.id] = d.data()));
 
         const all = attSnap.docs.map((d) => {
-          const data    = d.data();
+          const data = d.data();
           const dateStr = toDateString(data.Ngày);
           const dateObj = parseDMY(dateStr);
           return {
@@ -78,8 +74,8 @@ export default function Home() {
             S2: data.S2 || "",
             C1: data.C1 || "",
             C2: data.C2 || "",
-            morning:  lateMap[d.id]?.morning || "",
-            afternoon:lateMap[d.id]?.afternoon|| "",
+            morning: lateMap[d.id]?.morning || "",
+            afternoon: lateMap[d.id]?.afternoon || "",
           };
         });
 
@@ -91,24 +87,17 @@ export default function Home() {
     })();
   }, [enqueueSnackbar]);
 
-  // 2) Lọc khi rows / dept / fromDate / toDate thay đổi
   useEffect(() => {
     let tmp = rows;
-
-    if (dept !== "all") {
-      tmp = tmp.filter((r) => r["Tên bộ phận"] === dept);
-    }
-
+    if (dept !== "all") tmp = tmp.filter((r) => r["Tên bộ phận"] === dept);
     if (fromDate && toDate) {
       const start = startOfDay(fromDate);
-      const end   = endOfDay(toDate);
+      const end = endOfDay(toDate);
       tmp = tmp.filter((r) => r.dateObj >= start && r.dateObj <= end);
     }
-
     setFiltered(tmp);
   }, [rows, dept, fromDate, toDate]);
 
-  // 3) Upload & lưu Firestore
   const handleFileUpload = useCallback(
     async (rawRows) => {
       try {
@@ -117,15 +106,15 @@ export default function Home() {
           return {
             id: `${r["Tên nhân viên"]}_${dateStr.replace(/\//g, "-")}`,
             "Tên nhân viên": r["Tên nhân viên"],
-            "Tên bộ phận":   r["Tên bộ phận"],
-            Ngày:            dateStr,
-            dateObj:         parseDMY(dateStr),
+            "Tên bộ phận": r["Tên bộ phận"],
+            Ngày: dateStr,
+            dateObj: parseDMY(dateStr),
             S1: convertExcelTimeToTimeString(r.S1),
             S2: convertExcelTimeToTimeString(r.S2),
             C1: convertExcelTimeToTimeString(r.C1),
             C2: convertExcelTimeToTimeString(r.C2),
-            morning:  "",
-            afternoon:"",
+            morning: "",
+            afternoon: "",
           };
         });
         await Promise.all(
@@ -135,8 +124,7 @@ export default function Home() {
         );
         enqueueSnackbar("Tải & lưu cloud thành công", { variant: "success" });
         setRows((prev) => {
-          const others = prev.filter((r) => !formatted.some((f) => f.id === r.id));
-          return [...others, ...formatted];
+          return [...prev.filter((r) => !formatted.some((f) => f.id === r.id)), ...formatted];
         });
       } catch {
         enqueueSnackbar("Lỗi khi tải file", { variant: "error" });
@@ -145,7 +133,6 @@ export default function Home() {
     [enqueueSnackbar]
   );
 
-  // 4) In bảng đang hiển thị
   const handlePrint = () => {
     if (!fromDate || !toDate) {
       enqueueSnackbar("Chọn đủ Từ ngày và Đến ngày để in", { variant: "warning" });
@@ -156,7 +143,7 @@ export default function Home() {
       dept === "all" ? "Tất cả" : dept,
       fromDate,
       toDate,
-      includeSaturday   // ← truyền flag vào đây
+      includeSaturday
     );
   };
 
@@ -182,7 +169,7 @@ export default function Home() {
             label="Từ ngày"
             value={fromDate}
             onChange={setFromDate}
-            renderInput={(params) => <TextField size="small" {...params} />}
+            renderInput={(params) => <TextField size="small" {...params} />}  
           />
           <DatePicker
             label="Đến ngày"
@@ -209,7 +196,6 @@ export default function Home() {
         />
       </Box>
 
-      {/* Checkbox in thêm ngày Thứ 7 */}
       <Box mb={2}>
         <FormControlLabel
           control={
@@ -228,7 +214,11 @@ export default function Home() {
         </Button>
       </Box>
 
-      <AttendanceTable rows={filtered}  includeSaturday={includeSaturday} onReasonSave={() => {}} />
+      <AttendanceTable
+        rows={filtered}
+        includeSaturday={includeSaturday}
+        onReasonSave={() => {}}
+      />
     </>
   );
 }

@@ -22,7 +22,13 @@ function toMinutes(timeStr) {
  * @param {Date} toDate – ngày kết thúc
  * @param {boolean} includeSaturday – nếu true thì vẫn in giờ chiều Thứ 7
  */
-export function printStyledAttendance(rowsToPrint, dept, fromDate, toDate, includeSaturday = false) {
+export function printStyledAttendance(
+  rowsToPrint,
+  dept,
+  fromDate,
+  toDate,
+  includeSaturday = false
+) {
   if (!rowsToPrint.length) return;
 
   const firstDate = rowsToPrint[0].Ngày;
@@ -62,30 +68,32 @@ export function printStyledAttendance(rowsToPrint, dept, fromDate, toDate, inclu
       const isSat = dateObj.getDay() === 6;
       const hideSat = isSat && !includeSaturday;
 
-      // Gom giờ và sort
+      // Gom và sort giờ
       const allTimes = [r.S1, r.S2, r.C1, r.C2]
         .filter(isTimeString)
         .sort((a, b) => toMinutes(a) - toMinutes(b));
-      const afternoonTimes = allTimes.filter(t => toMinutes(t) >= 12 * 60);
-
-      // S2
+      
+      // Tính S2
       const S2calc = hideSat
-        ? (allTimes.length ? allTimes[allTimes.length - 1] : '❌')
-        : (r.S2 || '❌');
+        ? (allTimes.length ? allTimes[allTimes.length - 1] : "❌")
+        : (r.S2 || "❌");
 
-      // C1, C2: nếu hideSat thì show '—'
-      const C1calc = hideSat
-        ? '—'
-        : (afternoonTimes[0] || (includeSaturday ? '❌' : '—'));
-      const C2calc = hideSat
-        ? '—'
-        : (afternoonTimes.length
-            ? afternoonTimes[afternoonTimes.length - 1]
-            : (includeSaturday ? '❌' : '—')
-          );
+      // Tính C1, C2: với Thứ 7 sử dụng r.C1/C2, ngày thường cũng dùng gốc
+      let C1calc, C2calc;
+      if (isSat) {
+        if (!includeSaturday) {
+          C1calc = C2calc = "—";
+        } else {
+          C1calc = r.C1 || "❌";
+          C2calc = r.C2 || "❌";
+        }
+      } else {
+        C1calc = r.C1 || "❌";
+        C2calc = r.C2 || "❌";
+      }
 
-      const mReason = (r.morning || '').trim();
-      const aReason = (r.afternoon || '').trim();
+      const mReason = (r.morning || "").trim();
+      const aReason = (r.afternoon || "").trim();
 
       return `
         <tr>
@@ -94,17 +102,27 @@ export function printStyledAttendance(rowsToPrint, dept, fromDate, toDate, inclu
           <td>${r.Ngày}</td>
           <td>${weekday}</td>
 
+          <!-- S1 -->
           <td class="${isTimeString(r.S1) && isLate(r.S1, 7*60+15) ? 'late' : ''}">${r.S1 || '❌'}</td>
+
+          <!-- S2 -->
           <td class="${isTimeString(S2calc) && isEarly(S2calc, 11*60+15) ? 'late' : ''}">${S2calc}</td>
+
+          <!-- Lý do Sáng -->
           <td>${mReason}</td>
 
+          <!-- C1 -->
           <td class="${!hideSat && isTimeString(C1calc) && isLate(C1calc, 13*60) ? 'late' : ''}">${C1calc}</td>
+
+          <!-- C2 -->
           <td class="${!hideSat && isTimeString(C2calc) && isEarly(C2calc, 17*60) ? 'late' : ''}">${C2calc}</td>
+
+          <!-- Lý do Chiều -->
           <td>${hideSat ? '—' : aReason}</td>
         </tr>
       `;
     })
-    .join('');
+    .join("");
 
   const html = `
     <html>
@@ -135,7 +153,7 @@ export function printStyledAttendance(rowsToPrint, dept, fromDate, toDate, inclu
     </html>
   `;
 
-  const win = window.open('', '_blank');
+  const win = window.open("", "_blank");
   win.document.write(html);
   win.document.close();
   win.focus();
