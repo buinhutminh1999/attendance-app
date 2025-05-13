@@ -52,23 +52,19 @@ const AttendanceRow = memo(
     const isSaturday = dateObj.getDay() === 6;
     const hideSat = isSaturday && !includeSaturday;
 
-    // Gom S1,S2,C1,C2, lọc chuỗi giờ, sort tăng dần (dùng cho S2 highlight)
+    // Gom S1, S2, C1, C2, lọc chuỗi giờ, sort tăng dần
     const allTimes = [row.S1, row.S2, row.C1, row.C2]
       .filter(isTimeString)
       .sort((a, b) => toMinutes(a) - toMinutes(b));
 
-    // Tính S2 (giờ về sáng hoặc giờ cuối nếu Thứ 7)
-    const S2calc = hideSat
-      ? (allTimes.length ? allTimes[allTimes.length - 1] : "❌")
-      : (row.S2 || "❌");
-
-    // *** Tính C1, C2: LUÔN lấy từ row.C1/row.C2
+        // Tính S2 cho mọi ngày: chỉ hiển thị nếu row.S2 có, không fallback
+    const S2calc = row.S2 || "❌";
     let C1calc, C2calc;
     if (isSaturday && !includeSaturday) {
       // Thứ 7 & không in  → show “—”
       C1calc = C2calc = "—";
     } else {
-      // Mọi trường hợp khác → in thẳng dữ liệu gốc (hoặc ❌ nếu trống)
+      // Mọi trường hợp khác → in dữ liệu gốc hoặc ❌
       C1calc = row.C1 || "❌";
       C2calc = row.C2 || "❌";
     }
@@ -97,10 +93,10 @@ const AttendanceRow = memo(
               onBlur={(e) => onSave(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             />
+          ) : field === "afternoon" ? (
+            hideSat ? "—" : reason.afternoon || ""
           ) : (
-            field === "afternoon"
-              ? (hideSat ? "—" : (reason.afternoon || ""))
-              : (reason.morning || "")
+            reason.morning || ""
           )}
         </TableCell>
       );

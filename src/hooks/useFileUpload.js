@@ -42,7 +42,12 @@ export const useFileUpload = (onDataReady) => {
           const obj = {};
           Object.entries(row).forEach(([key, val]) => {
             const stdKey = headerMap[normalize(key)] || key;
-            obj[stdKey] = val;
+            if (stdKey === "S2" && !val) {
+              obj[stdKey] = ""; // giữ trống
+            } else {
+              obj[stdKey] = val;
+            }
+            
           });
           return obj;
         });

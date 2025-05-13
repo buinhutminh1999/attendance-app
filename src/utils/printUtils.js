@@ -2,26 +2,16 @@ import { isLate, isEarly, isTimeString } from "./timeUtils";
 
 const WEEKDAYS = ["Chủ Nhật", "Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy"];
 
-// Chuyển 'dd/MM/yyyy' → JS Date
 function parseDateString(str) {
   const [dd, mm, yyyy] = str.split("/").map(Number);
   return new Date(yyyy, mm - 1, dd);
 }
 
-// Chuyển 'HH:mm' → phút
 function toMinutes(timeStr) {
   const [h, m] = timeStr.split(":").map(Number);
   return h * 60 + m;
 }
 
-/**
- * In bảng chấm công với style.
- * @param {Array} rowsToPrint – mảng các bản ghi đã filter
- * @param {string} dept – tên bộ phận đang in
- * @param {Date} fromDate – ngày bắt đầu
- * @param {Date} toDate – ngày kết thúc
- * @param {boolean} includeSaturday – nếu true thì vẫn in giờ chiều Thứ 7
- */
 export function printStyledAttendance(
   rowsToPrint,
   dept,
@@ -73,12 +63,10 @@ export function printStyledAttendance(
         .filter(isTimeString)
         .sort((a, b) => toMinutes(a) - toMinutes(b));
       
-      // Tính S2
-      const S2calc = hideSat
-        ? (allTimes.length ? allTimes[allTimes.length - 1] : "❌")
-        : (r.S2 || "❌");
+      // Tính S2 cho mọi ngày: luôn hiển thị r.S2 nếu có, còn không thì ❌
+      const S2calc = r.S2 || "❌";
 
-      // Tính C1, C2: với Thứ 7 sử dụng r.C1/C2, ngày thường cũng dùng gốc
+      // Tính C1, C2
       let C1calc, C2calc;
       if (isSat) {
         if (!includeSaturday) {
@@ -103,19 +91,27 @@ export function printStyledAttendance(
           <td>${weekday}</td>
 
           <!-- S1 -->
-          <td class="${isTimeString(r.S1) && isLate(r.S1, 7*60+15) ? 'late' : ''}">${r.S1 || '❌'}</td>
+          <td class="${isTimeString(r.S1) && isLate(r.S1, 7*60+15) ? 'late' : ''}">
+            ${r.S1 || '❌'}
+          </td>
 
           <!-- S2 -->
-          <td class="${isTimeString(S2calc) && isEarly(S2calc, 11*60+15) ? 'late' : ''}">${S2calc}</td>
+          <td class="${isTimeString(S2calc) && isEarly(S2calc, 11*60+15) ? 'late' : ''}">
+            ${S2calc}
+          </td>
 
           <!-- Lý do Sáng -->
           <td>${mReason}</td>
 
           <!-- C1 -->
-          <td class="${!hideSat && isTimeString(C1calc) && isLate(C1calc, 13*60) ? 'late' : ''}">${C1calc}</td>
+          <td class="${!hideSat && isTimeString(C1calc) && isLate(C1calc, 13*60) ? 'late' : ''}">
+            ${C1calc}
+          </td>
 
           <!-- C2 -->
-          <td class="${!hideSat && isTimeString(C2calc) && isEarly(C2calc, 17*60) ? 'late' : ''}">${C2calc}</td>
+          <td class="${!hideSat && isTimeString(C2calc) && isEarly(C2calc, 17*60) ? 'late' : ''}">
+            ${C2calc}
+          </td>
 
           <!-- Lý do Chiều -->
           <td>${hideSat ? '—' : aReason}</td>

@@ -48,11 +48,11 @@ export default function Home() {
   const [fromDate, setFromDate] = useState(null);
   const [toDate, setToDate] = useState(null);
 
-  // trạng thái in thêm Thứ 7
   const [includeSaturday, setIncludeSaturday] = useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
 
+  // 1️⃣ Load dữ liệu từ Firestore
   useEffect(() => {
     (async () => {
       try {
@@ -71,7 +71,8 @@ export default function Home() {
             Ngày: dateStr,
             dateObj,
             S1: data.S1 || "",
-            S2: data.S2 || "",
+            // chỉ hiển thị S2 khi khác S1
+            S2: data.S2 && data.S2 !== data.S1 ? data.S2 : "",
             C1: data.C1 || "",
             C2: data.C2 || "",
             morning: lateMap[d.id]?.morning || "",
@@ -87,9 +88,12 @@ export default function Home() {
     })();
   }, [enqueueSnackbar]);
 
+  // 2️⃣ Filter theo bộ phận và khoảng ngày
   useEffect(() => {
     let tmp = rows;
-    if (dept !== "all") tmp = tmp.filter((r) => r["Tên bộ phận"] === dept);
+    if (dept !== "all") {
+      tmp = tmp.filter((r) => r["Tên bộ phận"] === dept);
+    }
     if (fromDate && toDate) {
       const start = startOfDay(fromDate);
       const end = endOfDay(toDate);
@@ -98,6 +102,7 @@ export default function Home() {
     setFiltered(tmp);
   }, [rows, dept, fromDate, toDate]);
 
+  // 3️⃣ Xử lý upload & convert trước khi lưu Firestore
   const handleFileUpload = useCallback(
     async (rawRows) => {
       try {
@@ -109,22 +114,44 @@ export default function Home() {
             "Tên bộ phận": r["Tên bộ phận"],
             Ngày: dateStr,
             dateObj: parseDMY(dateStr),
-            S1: convertExcelTimeToTimeString(r.S1),
-            S2: convertExcelTimeToTimeString(r.S2),
-            C1: convertExcelTimeToTimeString(r.C1),
-            C2: convertExcelTimeToTimeString(r.C2),
+            // chỉ convert nếu có giá trị
+            S1:
+              r.S1 != null && r.S1 !== ""
+                ? convertExcelTimeToTimeString(r.S1)
+                : "",
+            S2:
+              r.S2 != null && r.S2 !== ""
+                ? convertExcelTimeToTimeString(r.S2)
+                : "",
+            C1:
+              r.C1 != null && r.C1 !== ""
+                ? convertExcelTimeToTimeString(r.C1)
+                : "",
+            C2:
+              r.C2 != null && r.C2 !== ""
+                ? convertExcelTimeToTimeString(r.C2)
+                : "",
             morning: "",
             afternoon: "",
           };
         });
+
+        // Ghi đè hoàn toàn document (không merge) để đảm bảo xóa bỏ S2 cũ
         await Promise.all(
           formatted.map((row) =>
-            setDoc(doc(db, "attendance", row.id), row, { merge: true })
+            setDoc(doc(db, "attendance", row.id), row)
           )
         );
+
         enqueueSnackbar("Tải & lưu cloud thành công", { variant: "success" });
+
+        // Cập nhật state ngay UI
         setRows((prev) => {
-          return [...prev.filter((r) => !formatted.some((f) => f.id === r.id)), ...formatted];
+          // loại bỏ những id cũ, rồi thêm lại bản mới nhất
+          const others = prev.filter(
+            (r) => !formatted.some((f) => f.id === r.id)
+          );
+          return [...others, ...formatted];
         });
       } catch {
         enqueueSnackbar("Lỗi khi tải file", { variant: "error" });
@@ -135,7 +162,9 @@ export default function Home() {
 
   const handlePrint = () => {
     if (!fromDate || !toDate) {
-      enqueueSnackbar("Chọn đủ Từ ngày và Đến ngày để in", { variant: "warning" });
+      enqueueSnackbar("Chọn đủ Từ ngày và Đến ngày để in", {
+        variant: "warning",
+      });
       return;
     }
     printStyledAttendance(
@@ -169,7 +198,7 @@ export default function Home() {
             label="Từ ngày"
             value={fromDate}
             onChange={setFromDate}
-            renderInput={(params) => <TextField size="small" {...params} />}  
+            renderInput={(params) => <TextField size="small" {...params} />}
           />
           <DatePicker
             label="Đến ngày"
