@@ -22,9 +22,10 @@ import {
 } from "../utils/dateUtils";
 import { printStyledAttendance } from "../utils/printUtils";
 
-import { collection, getDocs, setDoc, doc } from "firebase/firestore";
+import { collection, getDocs, setDoc, doc, deleteDoc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useSnackbar } from "notistack";
+import { useFileUpload } from "../hooks/useFileUpload";
 
 const toDateString = (val) => {
   if (typeof val === "string") return val;
@@ -47,48 +48,48 @@ export default function Home() {
 
   const [fromDate, setFromDate] = useState(null);
   const [toDate, setToDate] = useState(null);
-
   const [includeSaturday, setIncludeSaturday] = useState(false);
 
   const { enqueueSnackbar } = useSnackbar();
 
-  // 1️⃣ Load dữ liệu từ Firestore
-  useEffect(() => {
-    (async () => {
-      try {
-        const attSnap = await getDocs(collection(db, "attendance"));
-        const lateSnap = await getDocs(collection(db, "lateReasons"));
-        const lateMap = {};
-        lateSnap.forEach((d) => (lateMap[d.id] = d.data()));
+  // Load dữ liệu từ Firestore
+  const loadAttendanceData = useCallback(async () => {
+    try {
+      const attSnap = await getDocs(collection(db, "attendance"));
+      const lateSnap = await getDocs(collection(db, "lateReasons"));
+      const lateMap = {};
+      lateSnap.forEach((d) => (lateMap[d.id] = d.data()));
 
-        const all = attSnap.docs.map((d) => {
-          const data = d.data();
-          const dateStr = toDateString(data.Ngày);
-          const dateObj = parseDMY(dateStr);
-          return {
-            id: d.id,
-            ...data,
-            Ngày: dateStr,
-            dateObj,
-            S1: data.S1 || "",
-            // chỉ hiển thị S2 khi khác S1
-            S2: data.S2 && data.S2 !== data.S1 ? data.S2 : "",
-            C1: data.C1 || "",
-            C2: data.C2 || "",
-            morning: lateMap[d.id]?.morning || "",
-            afternoon: lateMap[d.id]?.afternoon || "",
-          };
-        });
+      const all = attSnap.docs.map((d) => {
+        const data = d.data();
+        const dateStr = toDateString(data.Ngày);
+        const dateObj = parseDMY(dateStr);
+        return {
+          id: d.id,
+          ...data,
+          Ngày: dateStr,
+          dateObj,
+          S1: data.S1 || "",
+          S2: data.S2 && data.S2 !== data.S1 ? data.S2 : "",
+          C1: data.C1 || "",
+          C2: data.C2 || "",
+          morning: lateMap[d.id]?.morning || "",
+          afternoon: lateMap[d.id]?.afternoon || "",
+        };
+      });
 
-        setRows(all);
-        setDepts(Array.from(new Set(all.map((r) => r["Tên bộ phận"]))));
-      } catch {
-        enqueueSnackbar("Lỗi khi tải dữ liệu", { variant: "error" });
-      }
-    })();
+      setRows(all);
+      setDepts(Array.from(new Set(all.map((r) => r["Tên bộ phận"]))));
+    } catch {
+      enqueueSnackbar("Lỗi khi tải dữ liệu", { variant: "error" });
+    }
   }, [enqueueSnackbar]);
 
-  // 2️⃣ Filter theo bộ phận và khoảng ngày
+  useEffect(() => {
+    loadAttendanceData();
+  }, [loadAttendanceData]);
+
+  // Filter theo bộ phận và ngày
   useEffect(() => {
     let tmp = rows;
     if (dept !== "all") {
@@ -102,10 +103,14 @@ export default function Home() {
     setFiltered(tmp);
   }, [rows, dept, fromDate, toDate]);
 
-  // 3️⃣ Xử lý upload & convert trước khi lưu Firestore
-  const handleFileUpload = useCallback(
+  // Xóa và upload mới toàn bộ dữ liệu chấm công
+  const handleFileUploadData = useCallback(
     async (rawRows) => {
       try {
+        const snap = await getDocs(collection(db, "attendance"));
+        const deletePromises = snap.docs.map((d) => deleteDoc(doc(db, "attendance", d.id)));
+        await Promise.all(deletePromises);
+
         const formatted = rawRows.map((r) => {
           const dateStr = convertExcelDateToJSDate(r["Ngày"]);
           return {
@@ -114,29 +119,15 @@ export default function Home() {
             "Tên bộ phận": r["Tên bộ phận"],
             Ngày: dateStr,
             dateObj: parseDMY(dateStr),
-            // chỉ convert nếu có giá trị
-            S1:
-              r.S1 != null && r.S1 !== ""
-                ? convertExcelTimeToTimeString(r.S1)
-                : "",
-            S2:
-              r.S2 != null && r.S2 !== ""
-                ? convertExcelTimeToTimeString(r.S2)
-                : "",
-            C1:
-              r.C1 != null && r.C1 !== ""
-                ? convertExcelTimeToTimeString(r.C1)
-                : "",
-            C2:
-              r.C2 != null && r.C2 !== ""
-                ? convertExcelTimeToTimeString(r.C2)
-                : "",
+            S1: r.S1 != null && r.S1 !== "" ? convertExcelTimeToTimeString(r.S1) : "",
+            S2: r.S2 != null && r.S2 !== "" ? convertExcelTimeToTimeString(r.S2) : "",
+            C1: r.C1 != null && r.C1 !== "" ? convertExcelTimeToTimeString(r.C1) : "",
+            C2: r.C2 != null && r.C2 !== "" ? convertExcelTimeToTimeString(r.C2) : "",
             morning: "",
             afternoon: "",
           };
         });
 
-        // Ghi đè hoàn toàn document (không merge) để đảm bảo xóa bỏ S2 cũ
         await Promise.all(
           formatted.map((row) =>
             setDoc(doc(db, "attendance", row.id), row)
@@ -144,27 +135,30 @@ export default function Home() {
         );
 
         enqueueSnackbar("Tải & lưu cloud thành công", { variant: "success" });
-
-        // Cập nhật state ngay UI
-        setRows((prev) => {
-          // loại bỏ những id cũ, rồi thêm lại bản mới nhất
-          const others = prev.filter(
-            (r) => !formatted.some((f) => f.id === r.id)
-          );
-          return [...others, ...formatted];
-        });
-      } catch {
+        await loadAttendanceData();
+      } catch (err) {
         enqueueSnackbar("Lỗi khi tải file", { variant: "error" });
       }
     },
-    [enqueueSnackbar]
+    [enqueueSnackbar, loadAttendanceData]
   );
+
+  // Lưu lý do trễ
+  const handleReasonSave = useCallback(async (rowId, field, value) => {
+    try {
+      await setDoc(doc(db, "lateReasons", rowId), { [field]: value }, { merge: true });
+      enqueueSnackbar("Đã lưu lý do", { variant: "success" });
+      await loadAttendanceData(); // Reload nếu muốn realtime lý do
+    } catch {
+      enqueueSnackbar("Lỗi khi lưu lý do", { variant: "error" });
+    }
+  }, [enqueueSnackbar, loadAttendanceData]);
+
+  const { handleFileUpload } = useFileUpload(handleFileUploadData);
 
   const handlePrint = () => {
     if (!fromDate || !toDate) {
-      enqueueSnackbar("Chọn đủ Từ ngày và Đến ngày để in", {
-        variant: "warning",
-      });
+      enqueueSnackbar("Chọn đủ Từ ngày và Đến ngày để in", { variant: "warning" });
       return;
     }
     printStyledAttendance(
@@ -185,7 +179,6 @@ export default function Home() {
       <Box mb={2}>
         <FileUpload onFileUpload={handleFileUpload} />
       </Box>
-
       <Box display="flex" flexWrap="wrap" gap={2} mb={2}>
         <DepartmentFilter
           depts={depts}
@@ -208,7 +201,6 @@ export default function Home() {
           />
         </LocalizationProvider>
       </Box>
-
       <Box mb={2}>
         <FilterToolbar
           onSearchChange={(kw) => {
@@ -224,7 +216,6 @@ export default function Home() {
           }}
         />
       </Box>
-
       <Box mb={2}>
         <FormControlLabel
           control={
@@ -236,17 +227,15 @@ export default function Home() {
           label="In thêm ngày Thứ 7"
         />
       </Box>
-
       <Box mb={2}>
         <Button fullWidth variant="contained" onClick={handlePrint}>
           IN BẢNG CHẤM CÔNG
         </Button>
       </Box>
-
       <AttendanceTable
         rows={filtered}
         includeSaturday={includeSaturday}
-        onReasonSave={() => {}}
+        onReasonSave={handleReasonSave}
       />
     </>
   );

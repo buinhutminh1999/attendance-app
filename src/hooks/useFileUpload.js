@@ -4,11 +4,12 @@ import * as XLSX from "xlsx";
 
 /* Map tiêu đề gốc (kể cả in hoa, dấu, khoảng trắng) -> khóa chuẩn */
 const headerMap = {
-  "stt": "STT",
   "tên nhân viên": "Tên nhân viên",
   "ten nhan vien": "Tên nhân viên",
+  "tên nhân vi": "Tên nhân viên",     // 👈 thêm dòng này
   "tên bộ phận": "Tên bộ phận",
   "ten bo phan": "Tên bộ phận",
+  "tên bộ phậ": "Tên bộ phận",        // 👈 thêm dòng này
   "ngày": "Ngày",
   "ngay": "Ngày",
   "s1": "S1",
@@ -16,6 +17,7 @@ const headerMap = {
   "c1": "C1",
   "c2": "C2",
 };
+
 
 const normalize = (h) =>
   h
