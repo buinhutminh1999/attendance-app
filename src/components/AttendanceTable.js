@@ -1,3 +1,4 @@
+// src/components/AttendanceTable.jsx
 import React, { useState, useEffect, useCallback, forwardRef } from "react";
 import {
   Table,
@@ -18,68 +19,32 @@ import { db } from "../firebase";
 import { useSnackbar } from "notistack";
 import { isTimeString, isLate, isEarly } from "../utils/timeUtils";
 
-// Collection chứa lý do trễ
 const LATE_COLLECTION = "lateReasons";
 const WEEKDAY = ["Chủ Nhật", "Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy"];
+const parseDate = (s) => { const [dd, mm, yyyy] = s.split("/").map(Number); return new Date(yyyy, mm - 1, dd); };
+const toMinutes = (t) => { const [h, m] = t.split(":" ).map(Number); return h * 60 + m; };
 
-// Chuyển "dd/MM/yyyy" thành JS Date
-const parseDate = (s) => {
-  const [dd, mm, yyyy] = s.split("/").map(Number);
-  return new Date(yyyy, mm - 1, dd);
-};
-// Chuyển "HH:mm" thành phút
-const toMinutes = (t) => {
-  const [h, m] = t.split(":").map(Number);
-  return h * 60 + m;
-};
-
-/**
- * Một hàng attendance, KHÔNG dùng memo để luôn render lại khi đổi props
- */
-function AttendanceRow({
-  idx,
-  row,
-  includeSaturday,
-  reason,
-  editing,
-  onStartEdit,
-  onSave,
-}) {
+function AttendanceRow({ idx, row, includeSaturday, reason, editing, onStartEdit, onSave }) {
   const dateObj = parseDate(row.Ngày);
   const weekday = WEEKDAY[dateObj.getDay()];
   const isSaturday = dateObj.getDay() === 6;
   const hideSat = isSaturday && !includeSaturday;
-
-  // Gom S1, S2, C1, C2, lọc chuỗi giờ, sort tăng dần
-  const allTimes = [row.S1, row.S2, row.C1, row.C2]
-    .filter(isTimeString)
-    .sort((a, b) => toMinutes(a) - toMinutes(b));
-
-  // Tính S2 cho mọi ngày: chỉ hiển thị nếu row.S2 có, không fallback
+  const allTimes = [row.S1, row.S2, row.C1, row.C2].filter(isTimeString).sort((a, b) => toMinutes(a) - toMinutes(b));
   const S2calc = row.S2 || "❌";
   let C1calc, C2calc;
   if (isSaturday && !includeSaturday) {
-    // Thứ 7 & không in  → show “—”
     C1calc = C2calc = "—";
   } else {
-    // Mọi trường hợp khác → in dữ liệu gốc hoặc ❌
     C1calc = row.C1 || "❌";
     C2calc = row.C2 || "❌";
   }
 
-  // Render ô lý do editable hoặc hiển thị logic
   const renderReasonCell = (field) => {
-    if (field === "afternoon" && hideSat) {
-      return <TableCell>—</TableCell>;
-    }
-    const isActive =
-      editing?.rowId === row.id && editing.field === field;
+    if (field === "afternoon" && hideSat) return <TableCell>—</TableCell>;
+    const isActive = editing?.rowId === row.id && editing.field === field;
     return (
       <TableCell
-        sx={{
-          cursor: "pointer",
-          backgroundColor: isActive ? "#eef" : "inherit",
-        }}
+        sx={{ cursor: "pointer", backgroundColor: isActive ? "#eef" : "inherit" }}
         onDoubleClick={() => onStartEdit(row.id, field, reason[field] || "")}
       >
         {isActive ? (
@@ -91,21 +56,13 @@ function AttendanceRow({
             onBlur={(e) => onSave(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           />
-        ) : field === "afternoon" ? (
-          hideSat ? "—" : reason.afternoon || ""
-        ) : (
-          reason.morning || ""
-        )}
+        ) : field === "afternoon" ? (hideSat ? "—" : reason.afternoon || "") : reason.morning || ""}
       </TableCell>
     );
   };
 
-  // Helper highlight
   const cellSx = (timeStr, checkFn, threshold) => ({
-    backgroundColor:
-      isTimeString(timeStr) && checkFn(timeStr, threshold)
-        ? "#FFCCCC"
-        : "inherit",
+    backgroundColor: isTimeString(timeStr) && checkFn(timeStr, threshold) ? "#FFCCCC" : "inherit",
   });
 
   return (
@@ -115,51 +72,25 @@ function AttendanceRow({
       <TableCell>{row["Tên bộ phận"]}</TableCell>
       <TableCell>{row.Ngày}</TableCell>
       <TableCell>{weekday}</TableCell>
-
-      {/* S1 */}
-      <TableCell sx={cellSx(row.S1, isLate, 7 * 60 + 15)}>
-        {row.S1 || "❌"}
-      </TableCell>
-
-      {/* S2 */}
-      <TableCell sx={cellSx(S2calc, isEarly, 11 * 60 + 15)}>
-        {S2calc}
-      </TableCell>
-
-      {/* Lý do trễ (Sáng) */}
+      <TableCell sx={cellSx(row.S1, isLate, 7 * 60 + 15)}>{row.S1 || "❌"}</TableCell>
+      <TableCell sx={cellSx(S2calc, isEarly, 11 * 60 + 15)}>{S2calc}</TableCell>
       {renderReasonCell("morning")}
-
-      {/* C1 */}
-      <TableCell sx={hideSat ? {} : cellSx(C1calc, isLate, 13 * 60)}>
-        {C1calc}
-      </TableCell>
-
-      {/* C2 */}
-      <TableCell sx={hideSat ? {} : cellSx(C2calc, isEarly, 17 * 60)}>
-        {C2calc}
-      </TableCell>
-
-      {/* Lý do trễ (Chiều) */}
+      <TableCell sx={hideSat ? {} : cellSx(C1calc, isLate, 13 * 60)}>{C1calc}</TableCell>
+      <TableCell sx={hideSat ? {} : cellSx(C2calc, isEarly, 17 * 60)}>{C2calc}</TableCell>
       {renderReasonCell("afternoon")}
     </TableRow>
   );
 }
 
-/**
- * Component chính
- */
 export default forwardRef(function AttendanceTable(
-  { rows = [], includeSaturday = false, onReasonSave },
+  { rows = [], includeSaturday = false, onReasonSave, isMobile },
   ref
 ) {
   const [reasons, setReasons] = useState({});
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState({ rowId: null, field: null, value: "" });
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const { enqueueSnackbar } = useSnackbar();
 
-  // Load lý do từ Firestore mỗi khi rows đổi
   useEffect(() => {
     (async () => {
       try {
@@ -173,9 +104,8 @@ export default forwardRef(function AttendanceTable(
         setLoading(false);
       }
     })();
-  }, [enqueueSnackbar, rows]); // Đã thêm rows vào dependency
+  }, [enqueueSnackbar, rows]);
 
-  // Lưu lý do mới
   const saveReason = useCallback(
     async (newVal) => {
       const { rowId, field } = editing;
@@ -187,11 +117,7 @@ export default forwardRef(function AttendanceTable(
       onReasonSave?.(rowId, field, newVal);
       setEditing({ rowId: null, field: null, value: "" });
       try {
-        await setDoc(
-          doc(db, LATE_COLLECTION, rowId),
-          { [field]: newVal },
-          { merge: true }
-        );
+        await setDoc(doc(db, LATE_COLLECTION, rowId), { [field]: newVal }, { merge: true });
         enqueueSnackbar("Lưu lý do thành công", { variant: "success" });
       } catch {
         enqueueSnackbar("Lỗi khi lưu lý do", { variant: "error" });
@@ -209,8 +135,8 @@ export default forwardRef(function AttendanceTable(
   }
 
   return (
-    <TableContainer component={Paper}>
-      <Table size={isMobile ? "small" : "medium"}>
+    <TableContainer component={Paper} sx={{ overflowX: "auto" }}>
+      <Table size={isMobile ? "small" : "medium"} sx={{ "& td, & th": { py: isMobile ? 0.5 : 1 } }}>
         <TableHead>
           <TableRow>
             <TableCell>STT</TableCell>
@@ -235,9 +161,7 @@ export default forwardRef(function AttendanceTable(
               includeSaturday={includeSaturday}
               reason={reasons[r.id] || {}}
               editing={editing.rowId === r.id ? editing : null}
-              onStartEdit={(rowId, field, val) =>
-                setEditing({ rowId, field, value: val })
-              }
+              onStartEdit={(rowId, field, val) => setEditing({ rowId, field, value: val })}
               onSave={saveReason}
             />
           ))}
