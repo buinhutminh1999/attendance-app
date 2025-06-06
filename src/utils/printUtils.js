@@ -1,3 +1,5 @@
+// src/utils/printUtils.js
+
 import { isLate, isEarly, isTimeString } from "./timeUtils";
 
 const WEEKDAYS = ["Chủ Nhật", "Hai", "Ba", "Tư", "Năm", "Sáu", "Bảy"];
@@ -12,25 +14,35 @@ function toMinutes(timeStr) {
   return h * 60 + m;
 }
 
+/**
+ * @param {Array} rowsToPrint         - Mảng các row đã lọc/sorted, mỗi phần tử có ít nhất các trường { id, "Tên nhân viên", Ngày, S1, S2, C1, C2 }
+ * @param {string} dept               - Tên phòng ban (để in vào tiêu đề)
+ * @param {Date} fromDate             - Ngày bắt đầu
+ * @param {Date} toDate               - Ngày kết thúc
+ * @param {boolean} includeSaturday   - Có in thêm Thứ 7 hay không
+ * @param {Object} reasonsMap         - object dạng { [rowId]: { morning: "...", afternoon: "..." } }
+ */
 export function printStyledAttendance(
   rowsToPrint,
   dept,
   fromDate,
   toDate,
-  includeSaturday = false
+  includeSaturday = false,
+  reasonsMap = {}
 ) {
   if (!rowsToPrint.length) return;
 
-  // 1. Tạo mảng đã được sort tăng dần theo ngày thật sự
+  // 1. Sort theo ngày (DD/MM/YYYY)
   const sorted = [...rowsToPrint].sort((a, b) => {
     return parseDateString(a.Ngày) - parseDateString(b.Ngày);
   });
 
-  // 2. Lấy ngày đầu và ngày cuối từ mảng đã sort
+  // 2. Lấy firstDate & lastDate
   const firstDate = sorted[0].Ngày;
   const lastDate = sorted[sorted.length - 1].Ngày;
   const title = `Bảng công từ ngày ${firstDate} đến ngày ${lastDate} – Bộ phận: ${dept}`;
 
+  // CSS cho trang in
   const style = `
     <style>
       @page { size: A4 landscape; margin: 20px; }
@@ -57,7 +69,7 @@ export function printStyledAttendance(
     </style>
   `;
 
-  // 3. Tạo phần thân <tbody> dựa trên mảng đã sort
+  // 3. Tạo tbody HTML
   const rowsHtml = sorted
     .map((r, i) => {
       const dateObj = parseDateString(r.Ngày);
@@ -65,15 +77,10 @@ export function printStyledAttendance(
       const isSat = dateObj.getDay() === 6;
       const hideSat = isSat && !includeSaturday;
 
-      // Gom và sort giờ (nếu hợp lệ)
-      const allTimes = [r.S1, r.S2, r.C1, r.C2]
-        .filter(isTimeString)
-        .sort((a, b) => toMinutes(a) - toMinutes(b));
-
-      // Luôn hiển thị r.S2 nếu có, nếu không có => "❌"
+      // S2
       const S2calc = r.S2 || "❌";
 
-      // Tính C1, C2 (đặc biệt với Thứ Bảy và includeSaturday)
+      // C1, C2
       let C1calc, C2calc;
       if (isSat) {
         if (!includeSaturday) {
@@ -87,8 +94,9 @@ export function printStyledAttendance(
         C2calc = r.C2 || "❌";
       }
 
-      const mReason = (r.morning || "").trim();
-      const aReason = (r.afternoon || "").trim();
+      // Lấy lý do từ reasonsMap
+      const mReason = (reasonsMap[r.id]?.morning || "").trim();
+      const aReason = (reasonsMap[r.id]?.afternoon || "").trim();
 
       return `
         <tr>
@@ -135,7 +143,7 @@ export function printStyledAttendance(
     })
     .join("");
 
-  // 4. Đoạn HTML hoàn chỉnh để in
+  // 4. HTML hoàn chỉnh
   const html = `
     <html>
       <head>
@@ -178,7 +186,7 @@ export function printStyledAttendance(
     </html>
   `;
 
-  // 5. Mở cửa sổ in và in
+  // 5. Mở cửa sổ in
   const win = window.open("", "_blank");
   if (!win) return;
   win.document.write(html);
