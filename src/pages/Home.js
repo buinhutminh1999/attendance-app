@@ -7,29 +7,29 @@ import {
   CircularProgress,
   Checkbox,
   FormControlLabel,
-  useMediaQuery,
   Typography,
   Paper,
   Grid,
-  Divider,
   Stack,
   Tooltip,
+  InputAdornment
 } from "@mui/material";
-import { LocalizationProvider, DatePicker, MobileDatePicker } from "@mui/x-date-pickers";
+import {
+  LocalizationProvider,
+  DatePicker
+} from "@mui/x-date-pickers";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { startOfDay, endOfDay } from "date-fns";
-import { Print, UploadFile } from "@mui/icons-material";
+import { Print, Search } from "@mui/icons-material";
 
 import FileUpload from "../components/FileUpload";
 import DepartmentFilter from "../components/DepartmentFilter";
-import FilterToolbar from "../components/FilterToolbar";
 import AttendanceTable from "../components/AttendanceTable";
 import {
   convertExcelDateToJSDate,
   convertExcelTimeToTimeString,
 } from "../utils/dateUtils";
 import { printStyledAttendance } from "../utils/printUtils";
-
 import { collection, getDocs, setDoc, doc } from "firebase/firestore";
 import { db } from "../firebase";
 import { useSnackbar } from "notistack";
@@ -38,10 +38,7 @@ import { useFileUpload } from "../hooks/useFileUpload";
 const toDateString = (val) => {
   if (typeof val === "string") return val;
   const d = val.toDate ? val.toDate() : val;
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
 const parseDMY = (s) => {
@@ -50,7 +47,6 @@ const parseDMY = (s) => {
 };
 
 export default function Home() {
-  const isMobile = useMediaQuery("(max-width:600px)");
   const [rows, setRows] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [depts, setDepts] = useState([]);
@@ -59,8 +55,7 @@ export default function Home() {
   const [toDate, setToDate] = useState(null);
   const [includeSaturday, setIncludeSaturday] = useState(false);
   const { enqueueSnackbar } = useSnackbar();
-
-  const Picker = isMobile ? MobileDatePicker : DatePicker;
+  const { handleFileUpload } = useFileUpload(handleFileUploadData);
 
   const loadAttendanceData = useCallback(async () => {
     try {
@@ -68,16 +63,14 @@ export default function Home() {
       const lateSnap = await getDocs(collection(db, "lateReasons"));
       const lateMap = {};
       lateSnap.forEach((d) => (lateMap[d.id] = d.data()));
-
       const all = attSnap.docs.map((d) => {
         const data = d.data();
         const dateStr = toDateString(data.Ngày);
-        const dateObj = parseDMY(dateStr);
         return {
           id: d.id,
           ...data,
           Ngày: dateStr,
-          dateObj,
+          dateObj: parseDMY(dateStr),
           S1: data.S1 || "",
           S2: data.S2 && data.S2 !== data.S1 ? data.S2 : "",
           C1: data.C1 || "",
@@ -86,9 +79,8 @@ export default function Home() {
           afternoon: lateMap[d.id]?.afternoon || "",
         };
       });
-
       setRows(all);
-      setDepts(Array.from(new Set(all.map((r) => r["Tên bộ phận"]))))
+      setDepts(Array.from(new Set(all.map((r) => r["Tên bộ phận"]))));
     } catch {
       enqueueSnackbar("Lỗi khi tải dữ liệu", { variant: "error" });
     }
@@ -98,9 +90,7 @@ export default function Home() {
 
   useEffect(() => {
     let tmp = rows;
-    if (dept !== "all") {
-      tmp = tmp.filter((r) => r["Tên bộ phận"] === dept);
-    }
+    if (dept !== "all") tmp = tmp.filter((r) => r["Tên bộ phận"] === dept);
     if (fromDate && toDate) {
       const start = startOfDay(fromDate);
       const end = endOfDay(toDate);
@@ -109,7 +99,7 @@ export default function Home() {
     setFiltered(tmp);
   }, [rows, dept, fromDate, toDate]);
 
-  const handleFileUploadData = useCallback(async (rawRows) => {
+  async function handleFileUploadData(rawRows) {
     try {
       const formatted = rawRows.map((r) => {
         const dateStr = convertExcelDateToJSDate(r["Ngày"]);
@@ -128,16 +118,18 @@ export default function Home() {
         };
       });
       await Promise.all(
-        formatted.map((row) => setDoc(doc(db, "attendance", row.id), row, { merge: true }))
+        formatted.map((row) =>
+          setDoc(doc(db, "attendance", row.id), row, { merge: true })
+        )
       );
-      enqueueSnackbar("Tải & lưu cloud thành công", { variant: "success" });
+      enqueueSnackbar("Tải & lưu thành công", { variant: "success" });
       await loadAttendanceData();
-    } catch (err) {
+    } catch {
       enqueueSnackbar("Lỗi khi tải file", { variant: "error" });
     }
-  }, [enqueueSnackbar, loadAttendanceData]);
+  }
 
-  const handleReasonSave = useCallback(async (rowId, field, value) => {
+  const handleReasonSave = async (rowId, field, value) => {
     try {
       await setDoc(doc(db, "lateReasons", rowId), { [field]: value }, { merge: true });
       enqueueSnackbar("Đã lưu lý do", { variant: "success" });
@@ -145,9 +137,7 @@ export default function Home() {
     } catch {
       enqueueSnackbar("Lỗi khi lưu lý do", { variant: "error" });
     }
-  }, [enqueueSnackbar, loadAttendanceData]);
-
-  const { handleFileUpload } = useFileUpload(handleFileUploadData);
+  };
 
   const handlePrint = () => {
     if (!fromDate || !toDate) {
@@ -164,66 +154,129 @@ export default function Home() {
     </Box>
   );
 
+  const latestDate = rows.map(r => r.Ngày).sort().slice(-1)[0] || '-';
+
   return (
-    <Box sx={{ px: isMobile ? 1 : 4, pb: 4 }}>
-      <Paper elevation={3} sx={{ p: isMobile ? 2 : 3, mb: 3 }}>
-        <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} flexWrap="wrap">
-          <Typography variant="h6" fontWeight="bold">Tải file chấm công</Typography>
-          <Tooltip title="Tải từ Excel">
-      
-          </Tooltip>
-        </Stack>
-        <Box mt={2}>
-          <FileUpload onFileUpload={handleFileUpload} />
-        </Box>
-      </Paper>
+    <Box sx={{ px: 2, pb: 4 }}>
 
-      <Paper elevation={3} sx={{ p: isMobile ? 2 : 3, mb: 3 }}>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={4}>
-            <DepartmentFilter depts={depts} value={dept} onChange={setDept} labels={{ all: "Tất cả" }} />
-          </Grid>
-          <Grid item xs={6} sm={4}>
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <Picker label="Từ ngày" value={fromDate} onChange={setFromDate} renderInput={(params) => <TextField size="small" fullWidth {...params} />} />
-            </LocalizationProvider>
-          </Grid>
-          <Grid item xs={6} sm={4}>
-            <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <Picker label="Đến ngày" value={toDate} onChange={setToDate} renderInput={(params) => <TextField size="small" fullWidth {...params} />} />
-            </LocalizationProvider>
-          </Grid>
+
+      <Grid container spacing={2} mb={3} justifyContent="center">
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#E3F2FD" }}>
+            <Typography variant="subtitle2">Tổng số bản ghi</Typography>
+            <Typography fontWeight="bold">{rows.length}</Typography>
+          </Paper>
         </Grid>
-      </Paper>
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#FFFDE7" }}>
+            <Typography variant="subtitle2">Đã lọc</Typography>
+            <Typography fontWeight="bold">{filtered.length}</Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#F1F8E9" }}>
+            <Typography variant="subtitle2">Số phòng ban</Typography>
+            <Typography fontWeight="bold">{depts.length}</Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper sx={{ p: 2, textAlign: "center", bgcolor: "#FCE4EC" }}>
+            <Typography variant="subtitle2">Ngày mới nhất</Typography>
+            <Typography fontWeight="bold">{latestDate}</Typography>
+          </Paper>
+        </Grid>
+      </Grid>
 
-      <Paper elevation={3} sx={{ p: isMobile ? 2 : 3, mb: 3 }}>
-        <FilterToolbar
-          onSearchChange={(kw) => {
-            const k = kw.trim().toLowerCase();
-            if (!k) return setFiltered(rows);
-            setFiltered(
-              rows.filter((r) => Object.values(r).some((v) => v?.toString().toLowerCase().includes(k)))
-            );
-          }}
-          placeholder="Tìm theo tên, bộ phận, ngày..."
-        />
-        <FormControlLabel
-          sx={{ mt: 2 }}
-          control={<Checkbox checked={includeSaturday} onChange={(e) => setIncludeSaturday(e.target.checked)} />}
-          label="In thêm ngày Thứ 7"
-        />
-        <Divider sx={{ my: 2 }} />
-        <Button fullWidth variant="contained" startIcon={<Print />} onClick={handlePrint}>
-          IN BẢNG CHẤM CÔNG
-        </Button>
-      </Paper>
+      <Grid container spacing={2}>
+        <Grid item xs={12} md={3}>
+          <Paper sx={{ p: 2, mb: 2 }}>
+            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+              Bộ lọc
+            </Typography>
+            <DepartmentFilter depts={depts} value={dept} onChange={setDept} labels={{ all: "Tất cả" }} />
+            <LocalizationProvider dateAdapter={AdapterDateFns}>
+              <DatePicker
+                label="Từ ngày"
+                value={fromDate}
+                onChange={setFromDate}
+                renderInput={(params) => <TextField margin="normal" fullWidth size="small" {...params} />}
+              />
+              <DatePicker
+                label="Đến ngày"
+                value={toDate}
+                onChange={setToDate}
+                renderInput={(params) => <TextField margin="normal" fullWidth size="small" {...params} />}
+              />
+            </LocalizationProvider>
+            <TextField
+              fullWidth
+              size="small"
+              placeholder="Tìm theo tên, bộ phận, ngày..."
+              margin="normal"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search />
+                  </InputAdornment>
+                )
+              }}
+              onChange={(e) => {
+                const k = e.target.value.trim().toLowerCase();
+                if (!k) return setFiltered(rows);
+                setFiltered(rows.filter(r => Object.values(r).some(v => v?.toString().toLowerCase().includes(k))));
+              }}
+            />
+            {fromDate && toDate && (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={includeSaturday}
+                    onChange={(e) => setIncludeSaturday(e.target.checked)}
+                  />
+                }
+                label="In thêm Thứ 7"
+              />
+            )}
+            <Button
+              fullWidth
+              variant="contained"
+              startIcon={<Print />}
+              onClick={handlePrint}
+              disabled={!fromDate || !toDate || (toDate < fromDate)}
+            >
+              In bảng chấm công
+            </Button>
+            {(!fromDate || !toDate) && (
+              <Typography variant="caption" color="error" display="block" mt={1}>
+                Chọn đủ Từ ngày và Đến ngày để in
+              </Typography>
+            )}
+            {fromDate && toDate && toDate < fromDate && (
+              <Typography variant="caption" color="error" display="block" mt={1}>
+                Đến ngày phải lớn hơn hoặc bằng Từ ngày
+              </Typography>
+            )}
+          </Paper>
 
-      <AttendanceTable
-        rows={filtered}
-        includeSaturday={includeSaturday}
-        onReasonSave={handleReasonSave}
-        isMobile={isMobile}
-      />
+          <Paper sx={{ p: 2 }}>
+            <Tooltip title="Chỉ chấp nhận .xlsx theo mẫu">
+              <Typography fontWeight="bold" mb={1}>
+                Tải file chấm công
+              </Typography>
+            </Tooltip>
+            <FileUpload onFileUpload={handleFileUpload} />
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} md={9}>
+          <AttendanceTable
+            rows={filtered}
+            includeSaturday={includeSaturday}
+            onReasonSave={handleReasonSave}
+            isMobile={false}
+          />
+        </Grid>
+      </Grid>
     </Box>
   );
 }
